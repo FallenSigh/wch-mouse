@@ -1,0 +1,76 @@
+# ===========================================================================
+#  Build output
+# ===========================================================================
+build/
+build-*/
+cmake-build-*/
+
+# MounRiver Studio / Eclipse CDT generated build tree
+obj/
+
+# Compiled objects and firmware images (wherever they land)
+*.o
+*.obj
+*.d
+*.elf
+*.hex
+*.bin
+*.lst
+*.map
+*.siz
+*.expand
+*.253r.expand
+
+# ===========================================================================
+#  Tooling and local state
+# ===========================================================================
+# codegraph index (symlink into the user's global store)
+.codegraph
+
+# clangd configuration and index cache
+.clangd
+.cache/
+
+# Agent/session state
+.omo/
+
+# CMake generated
+compile_commands.json
+CMakeUserPresets.json
+
+# MounRiver Studio / Eclipse project metadata (CMake is the tracked build system)
+.cproject
+.project
+.template
+.mrs/
+*.wvproj
+*.wvproj.user
+*.launch
+
+# Eclipse/MounRiver per-project generated settings
+.settings/
+*.prefs
+
+# ===========================================================================
+#  Python
+# ===========================================================================
+__pycache__/
+*.py[cod]
+
+# ===========================================================================
+#  Editors / OS
+# ===========================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================================================================
+#  Vendor reference material
+#  75 MB CH585EVT SDK export, mostly prebuilt binaries and Eclipse metadata.
+#  The datasheets and io.csv in docs/ are kept.
+# ===========================================================================
+docs/CH585EVT/

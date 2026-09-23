@@ -1,0 +1,19 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "wch",
+      "displayName": "WCH CH585 RISC-V",
+      "description": "Cross build for the WCH CH585 using the MounRiver/WCH GCC toolchain",
+      "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/cmake/riscv-wch-toolchain.cmake"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wch",
+      "configurePreset": "wch"
+    }
+  ]
+}

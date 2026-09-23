@@ -1,0 +1,46 @@
+---
+# clang-format for the wch-mouse firmware (WCH CH585, RISC-V).
+#
+# Matches the hand-written sources in src/ (K&R braces, 4-space indent,
+# right-aligned pointers). The vendor tree StdPeriphDriver/ is left untouched
+# via StdPeriphDriver/.clang-format (DisableFormat: true).
+Language:        Cpp
+BasedOnStyle:    LLVM
+
+# ---- layout ----------------------------------------------------------------
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ColumnLimit:     100
+
+# ---- braces ----------------------------------------------------------------
+BreakBeforeBraces:                     Attach
+AllowShortFunctionsOnASingleLine:      Inline
+AllowShortBlocksOnASingleLine:         Empty
+AllowShortIfStatementsOnASingleLine:   Never
+AllowShortLoopsOnASingleLine:          false
+AllowShortCaseLabelsOnASingleLine:     false
+
+# ---- pointers / casts ------------------------------------------------------
+PointerAlignment:      Right
+DerivePointerAlignment: false
+SpaceAfterCStyleCast:  false
+
+# ---- spacing ---------------------------------------------------------------
+SpacesInParentheses:  false
+SpaceBeforeParens:    ControlStatements
+
+# ---- alignment -------------------------------------------------------------
+AlignConsecutiveMacros:       true
+AlignConsecutiveAssignments:  false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments:        true
+AlignEscapedNewlines:         Left
+
+# ---- includes --------------------------------------------------------------
+SortIncludes:    Never
+IncludeBlocks:   Preserve
+
+# ---- misc ------------------------------------------------------------------
+ReflowComments:    true
+MaxEmptyLinesToKeep: 1
