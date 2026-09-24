@@ -9,6 +9,7 @@
 #include "mouse.h"
 #include "rgb.h"
 #include "paw3395.h"
+#include "bat.h"
 
 static volatile uint32_t s_tick_ms;
 
@@ -83,6 +84,7 @@ int main() {
     rgb_init();
     paw3395_init();
     paw3395_set_cpi(800);
+    bat_init();
 
     if (bmi270_port_init(&bmi) != BMI2_OK) {
         LOG_E("BMI270", "init failed");
@@ -117,6 +119,8 @@ int main() {
             last_btn_scan = s_tick_ms;
             mouse_scan(s_tick_ms);
         }
+
+        bat_poll(s_tick_ms);
 
         /* IMU snapshot every 5 s: accel in raw counts and mg (±8g: 4096 LSB/g),
          * gyro in raw counts (±2000 dps default: 16.4 LSB/dps). */

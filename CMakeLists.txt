@@ -58,6 +58,7 @@ set(APP_SOURCES
     src/ch585_usbhs_device.c
     src/main.c
     src/log.c
+    src/bat.c
     src/motor.c
     src/mouse.c
     src/paw3395.c
