@@ -73,35 +73,35 @@ static inline void cs_hold_delay(void) {
 
 static void paw3395_write_reg(uint8_t reg, uint8_t val) {
     cs_low();
-    cs_setup_delay();
+    // cs_setup_delay();
     SPI0_MasterSendByte((uint8_t)(reg | 0x80u)); /* MSB=1 -> write  */
     SPI0_MasterSendByte(val);
-    cs_hold_delay();
+    // cs_hold_delay();
     cs_high();
-    inter_xact_gap();
+    // inter_xact_gap();
 }
 
 static uint8_t paw3395_read_reg(uint8_t reg) {
     cs_low();
-    cs_setup_delay();
+    // cs_setup_delay();
     SPI0_MasterSendByte((uint8_t)(reg & 0x7Fu)); /* MSB=0 -> read   */
-    mDelayuS(3);                                 /* tSRAD >= 2 us   */
+    // mDelayuS(3);                                 /* tSRAD >= 2 us   */
     uint8_t val = SPI0_MasterRecvByte();
-    cs_hold_delay();
+    // cs_hold_delay();
     cs_high();
-    inter_xact_gap();
+    // inter_xact_gap();
     return val;
 }
 
 static void paw3395_burst_read(uint8_t reg, uint8_t *buf, uint8_t len) {
     cs_low();
-    cs_setup_delay();
+    // cs_setup_delay();
     SPI0_MasterSendByte((uint8_t)(reg & 0x7Fu));
-    mDelayuS(3); /* tSRAD           */
+    // mDelayuS(3); /* tSRAD           */
     SPI0_MasterRecv(buf, len);
-    cs_hold_delay();
+    // cs_hold_delay();
     cs_high();
-    mDelayuS(2); /* tBEXIT >= 500ns */
+    // mDelayuS(2); /* tBEXIT >= 500ns */
 }
 
 bool paw3395_init(void) {
@@ -354,4 +354,8 @@ void paw3395_set_cpi(uint16_t cpi) {
 
 void paw3395_burst(uint8_t* buf) {
 	paw3395_burst_read(0x16, buf, 12);
+}
+
+void paw3395_shutdown() {
+	paw3395_write_reg(REG_SHUTDOWN, 0xB6);
 }

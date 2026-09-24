@@ -11,6 +11,7 @@ extern "C" {
 bool paw3395_init();
 void paw3395_set_cpi(uint16_t cpi);
 void paw3395_burst(uint8_t* buf);
+void paw3395_shutdown();
 
 #ifdef __cplusplus
 }
