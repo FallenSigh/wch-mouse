@@ -62,29 +62,10 @@ static int8_t encoder_update(uint32_t pins)
     return (int8_t)(steps * ENC_WHEEL_SIGN);
 }
 
-const char *Mouse_ButtonString(uint8_t mask)
-{
-    static char buf[24];
-    buf[0] = '\0';
-
-    if (mask & HID_BTN_LEFT)   { strcat(buf, "L ");  }
-    if (mask & HID_BTN_RIGHT)  { strcat(buf, "R ");  }
-    if (mask & HID_BTN_MID)    { strcat(buf, "M ");  }
-    if (mask & HID_BTN_BACK)   { strcat(buf, "B ");  }
-    if (mask & HID_BTN_FWD)    { strcat(buf, "F ");  }
-
-    if (buf[0] == '\0') {
-        strcpy(buf, "(none)");
-    } else {
-        buf[strlen(buf) - 1] = '\0';
-    }
-    return buf;
-}
-
 void mouse_init() {
     GPIOB_ModeCfg(INPUT_ALL_PINS, GPIO_ModeIN_PU);
 
-    s_btn_stable  = HID_BTN_MASK;   // active-low: all released
+    s_btn_stable  = HID_BTN_MASK;
     s_btn_history = HID_BTN_MASK;
     s_btn_match   = 0;
 
