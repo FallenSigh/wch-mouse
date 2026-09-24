@@ -60,6 +60,9 @@ set(APP_SOURCES
     src/motor.c
     src/mouse.c
     src/paw3395.c
+    src/bmi270.c
+    src/bmi2.c
+    src/bmi270_port.c
     src/rgb.c
     src/usb_desc.c)
 
@@ -106,7 +109,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # -----------------------------------------------------------------------------
 #  Defines  (-D)
 # -----------------------------------------------------------------------------
-target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG=1)
+# DEBUG selects the printf retarget UART (StdPeriphDriver/CH58x_sys.c):
+# 0=UART0, 1=UART1, 2=UART2, 3=UART3. Override with -DWCH_DEBUG_UART=3.
+set(WCH_DEBUG_UART 1 CACHE STRING "printf retarget UART: 0=UART0 1=UART1 2=UART2 3=UART3")
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG=${WCH_DEBUG_UART})
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${WCH_PROJECT_FLAGS})
 
