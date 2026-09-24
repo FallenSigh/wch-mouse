@@ -1,4 +1,5 @@
 #include "CH58x_common.h"
+#include "log.h"
 #include "bmi2.h"
 #include "bmi270.h"
 #include "bmi270_port.h"
@@ -20,6 +21,11 @@ __INTERRUPT void TMR3_IRQHandler() {
         TMR3_ClearITFlag(TMR0_3_IT_CYC_END);
         s_tick_ms++;
     }
+}
+
+/* Millisecond clock handed to the logger for line timestamps. */
+static uint32_t tick_ms(void) {
+    return s_tick_ms;
 }
 
 #define BIO_RST_PIN          GPIO_Pin_11
@@ -53,6 +59,9 @@ int main() {
     GPIOA_ModeCfg(GPIO_Pin_9, GPIO_ModeOut_PP_5mA);
     UART1_DefInit();
 
+    log_init(LOG_LEVEL);
+    log_set_clock(tick_ms);
+
     /* Tim2 init */
     TMR2_TimerInit(FREQ_SYS / 10000);
     TMR2_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
@@ -76,9 +85,9 @@ int main() {
     paw3395_set_cpi(800);
 
     if (bmi270_port_init(&bmi) != BMI2_OK) {
-        printf("bmi270 init failed!\n");
+        LOG_E("BMI270", "init failed");
     } else {
-        printf("bmi270 init done!\n");
+        LOG_I("BMI270", "init done");
     }
 
     struct bmi2_sens_config cfg = { 0 };
@@ -88,15 +97,15 @@ int main() {
     cfg.cfg.acc.filter_perf = BMI2_PERF_OPT_MODE;
     cfg.cfg.acc.range       = BMI2_ACC_RANGE_8G;      /* ±8g → 4096 LSB/g */
     if (bmi2_set_sensor_config(&cfg, 1, &bmi) != BMI2_OK) {
-        printf("bmi270 set config failed!\n");
+        LOG_W("BMI270", "set config failed");
     } 
 
     uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_GYRO };
     if (bmi270_sensor_enable(sens_list, 2, &bmi) != BMI2_OK) {
-        printf("bmi270 sensor enable failed\n");
+        LOG_W("BMI270", "sensor enable failed");
     }
 
-    printf("init done!\n");
+    LOG_I("MAIN", "init done");
 
     uint32_t last_btn_scan = 0;
     uint8_t data[12];
@@ -116,10 +125,10 @@ int main() {
             last_imu_ms = s_tick_ms;
             struct bmi2_sens_data d;
             if (bmi2_get_sensor_data(&d, &bmi) == BMI2_OK) {
-                printf("[BMI270] acc=(%d,%d,%d) mg=(%d,%d,%d) gyr=(%d,%d,%d)\n",
-                       d.acc.x, d.acc.y, d.acc.z,
-                       d.acc.x * 1000 / 4096, d.acc.y * 1000 / 4096, d.acc.z * 1000 / 4096,
-                       d.gyr.x, d.gyr.y, d.gyr.z);
+                LOG_I("BMI270", "acc=(%d,%d,%d) mg=(%d,%d,%d) gyr=(%d,%d,%d)",
+                      d.acc.x, d.acc.y, d.acc.z,
+                      d.acc.x * 1000 / 4096, d.acc.y * 1000 / 4096, d.acc.z * 1000 / 4096,
+                      d.gyr.x, d.gyr.y, d.gyr.z);
             }
         }
 

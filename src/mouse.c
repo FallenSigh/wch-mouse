@@ -1,6 +1,7 @@
 #include "mouse.h"
 #include "ch585_usbhs_device.h"
 #include "paw3395.h"
+#include "log.h"
 
 #define BTN_LEFT_PIN      GPIO_Pin_7     // PB7   PR_SW1
 #define BTN_RIGHT_PIN     GPIO_Pin_1     // PB1   PR_SW2
@@ -91,7 +92,7 @@ void mouse_init() {
     s_enc_prev  = (uint8_t)(((pins & ENC_A_PIN) ? 2u : 0u) | ((pins & ENC_B_PIN) ? 1u : 0u));
     s_enc_accum = 0;
 
-    printf("[MOUSE] L=PB7 R=PB1 M=PB9 S1=PB11 S2=PB4 ENC_A=PB8 ENC_B=PB19\n");
+    LOG_I("MOUSE", "L=PB7 R=PB1 M=PB9 S1=PB11 S2=PB4 ENC_A=PB8 ENC_B=PB19");
 }
 
 void mouse_scan(uint32_t now_ms) {

@@ -23,6 +23,7 @@
 #include "paw3395.h"
 #include "CH58x_common.h"
 #include "CH58x_sys.h"
+#include "log.h"
 
 #include <stdio.h>
 
@@ -323,7 +324,7 @@ bool paw3395_init(void) {
     paw3395_write_reg(0x40, 0x40);
     paw3395_write_reg(0x7F, 0x00);
 
-    printf("[PAW3395] register 0x6C reaches %#x at %d\n", val, i);
+    LOG_I("PAW3395", "register 0x6C reaches %#x at %d", val, i);
 
     return true;
 }
