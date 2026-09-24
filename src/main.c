@@ -1,4 +1,8 @@
 #include "CH58x_common.h"
+#include "bmi2.h"
+#include "bmi270.h"
+#include "bmi270_port.h"
+#include "bmi2_defs.h"
 #include "ch585_usbhs_device.h"
 #include "UART.h"
 #include "mouse.h"
@@ -30,6 +34,7 @@ void bio_reset(void)
     mDelaymS(100);                  /* module boot time */
 }
 
+static struct bmi2_dev bmi;
 
 int main() {
     uint8_t len;
@@ -69,6 +74,28 @@ int main() {
     rgb_init();
     paw3395_init();
     paw3395_set_cpi(800);
+
+    if (bmi270_port_init(&bmi) != BMI2_OK) {
+        printf("bmi270 init failed!\n");
+    } else {
+        printf("bmi270 init done!\n");
+    }
+
+    struct bmi2_sens_config cfg = { 0 };
+    cfg.type                = BMI2_ACCEL;
+    cfg.cfg.acc.odr         = BMI2_ACC_ODR_100HZ;    /* 100 Hz          */
+    cfg.cfg.acc.bwp         = BMI2_ACC_NORMAL_AVG4;
+    cfg.cfg.acc.filter_perf = BMI2_PERF_OPT_MODE;
+    cfg.cfg.acc.range       = BMI2_ACC_RANGE_8G;      /* ±8g → 4096 LSB/g */
+    if (bmi2_set_sensor_config(&cfg, 1, &bmi) != BMI2_OK) {
+        printf("bmi270 set config failed!\n");
+    } 
+
+    uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_GYRO };
+    if (bmi270_sensor_enable(sens_list, 2, &bmi) != BMI2_OK) {
+        printf("bmi270 sensor enable failed\n");
+    }
+
     printf("init done!\n");
 
     uint32_t last_btn_scan = 0;
@@ -80,6 +107,20 @@ int main() {
         if (s_tick_ms - last_btn_scan >= 1) {
             last_btn_scan = s_tick_ms;
             mouse_scan(s_tick_ms);
+        }
+
+        /* IMU snapshot every 5 s: accel in raw counts and mg (±8g: 4096 LSB/g),
+         * gyro in raw counts (±2000 dps default: 16.4 LSB/dps). */
+        static uint32_t last_imu_ms = 0;
+        if (s_tick_ms - last_imu_ms >= 5000) {
+            last_imu_ms = s_tick_ms;
+            struct bmi2_sens_data d;
+            if (bmi2_get_sensor_data(&d, &bmi) == BMI2_OK) {
+                printf("[BMI270] acc=(%d,%d,%d) mg=(%d,%d,%d) gyr=(%d,%d,%d)\n",
+                       d.acc.x, d.acc.y, d.acc.z,
+                       d.acc.x * 1000 / 4096, d.acc.y * 1000 / 4096, d.acc.z * 1000 / 4096,
+                       d.gyr.x, d.gyr.y, d.gyr.z);
+            }
         }
 
         /* RGB underglow: cycle the hue at ~30 Hz. The TIM1+DMA driver does
