@@ -28,7 +28,7 @@ static volatile uint8_t s_btn_match;
  * transition and 0 for anything else, so contact bounce and double-edges
  * are discarded. One mechanical detent is one full cycle = 4 transitions.
  */
-#define ENC_TRANSITIONS_PER_DETENT   4
+#define ENC_TRANSITIONS_PER_DETENT   2
 #define ENC_WHEEL_SIGN              (+1)   /* flip to -1 if scroll direction is inverted */
 
 static int8_t  s_enc_accum;
