@@ -57,6 +57,7 @@ set(APP_SOURCES
     src/UART.c
     src/ch585_usbhs_device.c
     src/main.c
+    src/log.c
     src/motor.c
     src/mouse.c
     src/paw3395.c
@@ -113,7 +114,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # 0=UART0, 1=UART1, 2=UART2, 3=UART3. Override with -DWCH_DEBUG_UART=3.
 set(WCH_DEBUG_UART 1 CACHE STRING "printf retarget UART: 0=UART0 1=UART1 2=UART2 3=UART3")
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG=${WCH_DEBUG_UART})
+# Compile-time log ceiling: LOG_LVL_ERROR / LOG_LVL_WARN / LOG_LVL_INFO / LOG_LVL_DEBUG.
+set(WCH_LOG_LEVEL "LOG_LVL_INFO" CACHE STRING "Compile-time log level ceiling")
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    DEBUG=${WCH_DEBUG_UART}
+    LOG_LEVEL=${WCH_LOG_LEVEL})
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${WCH_PROJECT_FLAGS})
 
