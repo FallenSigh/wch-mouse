@@ -5,6 +5,10 @@
 
 #define USB_HID_EP   DEF_UEP4
 
+/* Window after a VBUS (re-)plug during which the PHY is kept up to let a
+ * possible host enumerate, even while a radio link owns the mouse. */
+#define USB_PROBE_MS 800u
+
 /* USB is usable only when a host has actually enumerated and configured us.
  * Two traps make every naive check wrong:
  *   - USBHS_DevEnumStatus is set only on SET_CONFIGURATION but cleared only
@@ -12,18 +16,29 @@
  *   - bat_power_good() only means VBUS is present, which is equally true for
  *     a dumb charger - and a charger never raises a bus reset or sends
  *     SET_CONFIGURATION.
- * So usb_ready() clears the device state itself whenever VBUS goes away. */
-static bool    s_usb_enumerated;
-static bool    s_phy_on;
-static uint8_t s_enum_logged;
+ * So usb_ready() clears the device state itself whenever VBUS goes away, and
+ * reports no link whenever the PHY is powered down. */
+static bool     s_usb_enumerated;
+static bool     s_phy_on;
+static uint8_t  s_enum_logged;
+static bool     s_vbus_prev;
+static bool     s_probing;
+static uint32_t s_probe_until_ms;
 
-/* Keep the USBHS PHY and its PLL powered only while VBUS is present. The PHY
+/* USBHS_DevConfig / USBHS_DevEnumStatus are only cleared by the driver on a
+ * bus reset, so whenever we power the PHY down ourselves the stale
+ * "enumerated" state has to be dropped here. */
+static void usb_forget(void)
+{
+    USBHS_DevConfig     = 0;
+    USBHS_DevEnumStatus = 0;
+    s_usb_enumerated    = false;
+}
+
+/* Keep the USBHS PHY and its PLL powered only while it can be used. The PHY
  * costs 10-20 mA, which is pure waste on battery, and USBHS_Device_Init() is
  * a full re-init on its ENABLE path while DISABLE powers the PHY PLL down -
- * so it is safe to toggle as VBUS comes and goes. The PHY still has to stay
- * on for a guest charger (VBUS but no host): it is the only way to notice a
- * host arriving, while usb_ready() independently refuses to hand the link
- * over unless a host really enumerated us. */
+ * so it is safe to toggle as VBUS and the active link come and go. */
 static void usb_phy_set(bool on)
 {
     if (on == s_phy_on) {
@@ -39,6 +54,8 @@ static void usb_phy_set(bool on)
          * rest of the init covers it, on a re-plug nothing does. Give the
          * PLL a moment to lock so the host can actually enumerate us. */
         mDelaymS(5);
+    } else {
+        usb_forget();
     }
 
     LOG_I("USB", "phy %s", on ? "on" : "off");
@@ -52,9 +69,11 @@ static void usb_phy_set(bool on)
 static bool usb_ready(void)
 {
     if (!bat_power_good()) {
-        USBHS_DevConfig     = 0;
-        USBHS_DevEnumStatus = 0;
-        s_usb_enumerated    = false;
+        usb_forget();
+        return false;
+    }
+
+    if (!s_phy_on) {
         return false;
     }
 
@@ -70,17 +89,37 @@ static bool usb_init(void)
 
 static void usb_poll(uint32_t now_ms)
 {
-    const uint8_t en = (USBHS_DevEnumStatus != 0) ? 1u : 0u;
+    const bool vbus     = bat_power_good();
+    const bool usb_owns = (transport_router_active() == TR_USB);
+    const bool ble_owns = (transport_router_active() == TR_BLE);
 
-    (void)now_ms;
-    usb_phy_set(bat_power_good());
+    /* A fresh VBUS (re-)plug while the radio owns the mouse: keep the PHY up
+     * briefly so a host attached to that cable can still enumerate and take
+     * the link over. */
+    if (vbus && !s_vbus_prev && ble_owns) {
+        s_probing        = true;
+        s_probe_until_ms = now_ms + USB_PROBE_MS;
+    }
+    s_vbus_prev = vbus;
+
+    if (s_probing && (int32_t)(now_ms - s_probe_until_ms) >= 0) {
+        s_probing = false;
+    }
+
+    /* PHY on while USB is the active link, while no radio link owns the mouse
+     * (so a host can be detected), or during the probe window; otherwise off. */
+    usb_phy_set(vbus && (usb_owns || !ble_owns || s_probing));
 
     /* Diagnostic: shows whether a re-plugged host re-enumerates at all
      * (enum 0 -> 1) or whether the device never comes back. */
-    if (en != s_enum_logged) {
-        s_enum_logged = en;
-        LOG_I("USB", "enum=%u vbus=%u", (unsigned)en,
-              (unsigned)(bat_power_good() ? 1u : 0u));
+    {
+        const uint8_t en = (USBHS_DevEnumStatus != 0) ? 1u : 0u;
+
+        if (en != s_enum_logged) {
+            s_enum_logged = en;
+            LOG_I("USB", "enum=%u vbus=%u", (unsigned)en,
+                  (unsigned)(vbus ? 1u : 0u));
+        }
     }
 }
 
