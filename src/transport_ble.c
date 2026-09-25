@@ -43,7 +43,6 @@ static uint32_t s_tx_attempts;
 static uint32_t s_tx_sent;
 static uint32_t s_tx_stats_ms;
 static uint32_t s_tx_ms;
-static uint8_t  s_tx_fail_logged;
 
 /* Pace notifications to roughly one per connection interval. The main loop
  * has no delay, so polling HidDev_Report unconditionally hammers the stack's
@@ -310,13 +309,8 @@ static bool ble_flush(void)
 
     s_tx_attempts++;
 
-    const uint8_t st = HidDev_Report(HID_RPT_ID_MOUSE_IN, HID_REPORT_TYPE_INPUT,
-                                     sizeof(s_pending), (uint8_t *)&s_pending);
-    if (st != SUCCESS) {
-        if (s_tx_fail_logged < 3u) {
-            s_tx_fail_logged++;
-            LOG_W("BLE", "report failed: 0x%02X", (unsigned)st);
-        }
+    if (HidDev_Report(HID_RPT_ID_MOUSE_IN, HID_REPORT_TYPE_INPUT,
+                      sizeof(s_pending), (uint8_t *)&s_pending) != SUCCESS) {
         return false;               /* link busy - keep accumulating */
     }
 
