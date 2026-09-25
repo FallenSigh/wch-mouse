@@ -24,6 +24,10 @@ static uint8_t  s_enum_logged;
 static bool     s_vbus_prev;
 static bool     s_probing;
 static uint32_t s_probe_until_ms;
+static uint32_t s_tx_attempts;
+static uint32_t s_tx_ok;
+static uint32_t s_tx_busy;
+static uint32_t s_stat_ms;
 
 /* USBHS_DevConfig / USBHS_DevEnumStatus are only cleared by the driver on a
  * bus reset, so whenever we power the PHY down ourselves the stale
@@ -110,6 +114,15 @@ static void usb_poll(uint32_t now_ms)
      * (so a host can be detected), or during the probe window; otherwise off. */
     usb_phy_set(vbus && (usb_owns || !ble_owns || s_probing));
 
+    if (now_ms - s_stat_ms >= 5000u) {
+        s_stat_ms = now_ms;
+        LOG_I("USB", "tx att %u ok %u busy %u in 5s", (unsigned)s_tx_attempts,
+              (unsigned)s_tx_ok, (unsigned)s_tx_busy);
+        s_tx_attempts = 0;
+        s_tx_ok = 0;
+        s_tx_busy = 0;
+    }
+
     /* Diagnostic: shows whether a re-plugged host re-enumerates at all
      * (enum 0 -> 1) or whether the device never comes back. */
     {
@@ -134,8 +147,16 @@ static bool usb_send(const MouseReport_t *rpt)
         return false;
     }
 
-    return USBHS_Endp_DataUp(USB_HID_EP, (uint8_t *)rpt, sizeof(*rpt),
-                             DEF_UEP_CPY_LOAD) == 0;
+    s_tx_attempts++;
+
+    if (USBHS_Endp_DataUp(USB_HID_EP, (uint8_t *)rpt, sizeof(*rpt),
+                          DEF_UEP_CPY_LOAD) == 0) {
+        s_tx_ok++;
+        return true;
+    }
+
+    s_tx_busy++;
+    return false;
 }
 
 const transport_t transport_usb = {
