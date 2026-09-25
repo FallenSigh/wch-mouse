@@ -3,7 +3,7 @@
  * Author             : WCH
  * Version            : V1.2
  * Date               : 2022/01/18
- * Description        : Ë¯ÃßÅäÖÃ¼°Æä³õÊ¼»¯
+ * Description        : ç¡çœ é…ç½®åŠå…¶åˆå§‹åŒ–
  *********************************************************************************
  * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
  * Attention: This software (modified or not) and binary are used for 
@@ -11,7 +11,7 @@
  *******************************************************************************/
 
 /******************************************************************************/
-/* Í·ÎÄ¼ş°üº¬ */
+/* å¤´æ–‡ä»¶åŒ…å« */
 #include "HAL.h"
 
 
@@ -19,9 +19,9 @@ pfnLowPowerGapProcessCB_t LowPowerGapProcess;
 /*******************************************************************************
  * @fn          CH58x_LowPower
  *
- * @brief       Æô¶¯Ë¯Ãß
+ * @brief       å¯åŠ¨ç¡çœ 
  *
- * @param       time  - »½ĞÑµÄÊ±¼äµã£¨RTC¾ø¶ÔÖµ£©
+ * @param       time  - å”¤é†’çš„æ—¶é—´ç‚¹ï¼ˆRTCç»å¯¹å€¼ï¼‰
  *
  * @return      state.
  */
@@ -33,7 +33,7 @@ uint32_t CH58x_LowPower(uint32_t time)
     uint32_t time_tign, time_sleep, time_curr;
     unsigned long irq_status;
 
-    // ÌáÇ°»½ĞÑ
+    // æå‰å”¤é†’
     if (time <= WAKE_UP_RTC_MAX_TIME) {
         time_tign = time + (RTC_MAX_COUNT - WAKE_UP_RTC_MAX_TIME);
     } else {
@@ -42,14 +42,14 @@ uint32_t CH58x_LowPower(uint32_t time)
 
     SYS_DisableAllIrq(&irq_status);
     time_curr = RTC_GetCycle32k();
-    // ¼ì²âË¯ÃßÊ±¼ä
+    // æ£€æµ‹ç¡çœ æ—¶é—´
     if (time_tign < time_curr) {
         time_sleep = time_tign + (RTC_MAX_COUNT - time_curr);
     } else {
         time_sleep = time_tign - time_curr;
     }
 
-    // ÈôË¯ÃßÊ±¼äĞ¡ÓÚ×îĞ¡Ë¯ÃßÊ±¼ä»ò´óÓÚ×î´óË¯ÃßÊ±¼ä£¬Ôò²»Ë¯Ãß
+    // è‹¥ç¡çœ æ—¶é—´å°äºæœ€å°ç¡çœ æ—¶é—´æˆ–å¤§äºæœ€å¤§ç¡çœ æ—¶é—´ï¼Œåˆ™ä¸ç¡çœ 
     if ((time_sleep < SLEEP_RTC_MIN_TIME) || 
         (time_sleep > SLEEP_RTC_MAX_TIME)) {
         SYS_RecoverIrq(irq_status);
@@ -59,20 +59,20 @@ uint32_t CH58x_LowPower(uint32_t time)
     RTC_SetTignTime(time_tign);
     R8_RTC_FLAG_CTRL = (RB_RTC_TMR_CLR | RB_RTC_TRIG_CLR);
 
-#if(DEBUG == Debug_UART0) // Ê¹ÓÃÆäËû´®¿ÚÊä³ö´òÓ¡ĞÅÏ¢ĞèÒªĞŞ¸ÄÕâĞĞ´úÂë
+#if(DEBUG == Debug_UART0) // ä½¿ç”¨å…¶ä»–ä¸²å£è¾“å‡ºæ‰“å°ä¿¡æ¯éœ€è¦ä¿®æ”¹è¿™è¡Œä»£ç 
     while((R8_UART0_LSR & RB_LSR_TX_ALL_EMP) == 0)
     {
         __nop();
     }
 #endif
-    // LOW POWER-sleepÄ£Ê½
+    // LOW POWER-sleepæ¨¡å¼
     if(!(R8_RTC_FLAG_CTRL&RB_RTC_TRIG_FLAG))
     {
         uint8_t x32Mpw;
 
-        // ÇĞ»»32MµçÁ÷
+        // åˆ‡æ¢32Mç”µæµ
         x32Mpw = R8_XT32M_TUNE;
-        x32Mpw = (x32Mpw & 0xfc) | 0x03; // 150%¶î¶¨µçÁ÷
+        x32Mpw = (x32Mpw & 0xfc) | 0x03; // 150%é¢å®šç”µæµ
         sys_safe_access_enable();
         R8_XT32M_TUNE = x32Mpw;
         sys_safe_access_disable();
@@ -85,13 +85,13 @@ uint32_t CH58x_LowPower(uint32_t time)
         {
             LowPower_Sleep_WFE(RB_PWR_RAM32K | RB_PWR_RAM96K | RB_PWR_EXTEND);
 
-            if(!(R8_RTC_FLAG_CTRL&RB_RTC_TRIG_FLAG)) //·ÇRTC»½ĞÑ
+            if(!(R8_RTC_FLAG_CTRL&RB_RTC_TRIG_FLAG)) //éRTCå”¤é†’
             {
-                // ×¢Òâ´ËÊ±32M»¹ĞèµÈ´ıÎÈ¶¨£¬Ò²¿ÉÖ´ĞĞÒ»Ğ©Ê±ÖÓÒªÇó²»¸ßµÄ´úÂë
+                // æ³¨æ„æ­¤æ—¶32Mè¿˜éœ€ç­‰å¾…ç¨³å®šï¼Œä¹Ÿå¯æ‰§è¡Œä¸€äº›æ—¶é’Ÿè¦æ±‚ä¸é«˜çš„ä»£ç 
                 DelayUs(1400);
                 SetSysClock( SYSCLK_FREQ );
                 SYS_RecoverIrq(irq_status);
-                HSECFG_Current(HSE_RCur_100); // ½µÎª¶î¶¨µçÁ÷(µÍ¹¦ºÄº¯ÊıÖĞÌáÉıÁËHSEÆ«ÖÃµçÁ÷)
+                HSECFG_Current(HSE_RCur_100); // é™ä¸ºé¢å®šç”µæµ(ä½åŠŸè€—å‡½æ•°ä¸­æå‡äº†HSEåç½®ç”µæµ)
                 return 0;
             }
 
@@ -100,16 +100,16 @@ uint32_t CH58x_LowPower(uint32_t time)
             sys_safe_access_enable();
             R8_HFCK_PWR_CTRL |= RB_CLK_XT32M_KEEP;
             sys_safe_access_disable();
-            if(!(R8_RTC_FLAG_CTRL&RB_RTC_TRIG_FLAG)) //·ÇRTC»½ĞÑ
+            if(!(R8_RTC_FLAG_CTRL&RB_RTC_TRIG_FLAG)) //éRTCå”¤é†’
             {
                 LowPower_Halt_WFE();
             }
 
         }
-        // »Ö¸´Ê±ÖÓ
+        // æ¢å¤æ—¶é’Ÿ
         SetSysClock( SYSCLK_FREQ );
         SYS_RecoverIrq(irq_status);
-        HSECFG_Current(HSE_RCur_100); // ½µÎª¶î¶¨µçÁ÷(µÍ¹¦ºÄº¯ÊıÖĞÌáÉıÁËHSEÆ«ÖÃµçÁ÷)
+        HSECFG_Current(HSE_RCur_100); // é™ä¸ºé¢å®šç”µæµ(ä½åŠŸè€—å‡½æ•°ä¸­æå‡äº†HSEåç½®ç”µæµ)
         return 0;
     }
     SYS_RecoverIrq(irq_status);
@@ -120,7 +120,7 @@ uint32_t CH58x_LowPower(uint32_t time)
 /*******************************************************************************
  * @fn      LowPowerGapProcess_Register
  *
- * @brief   ×¢²áµÍ¹¦ºÄ»½ĞÑ¼äÏ¶Ö´ĞĞ»Øµ÷
+ * @brief   æ³¨å†Œä½åŠŸè€—å”¤é†’é—´éš™æ‰§è¡Œå›è°ƒ
  *
  * @param   None.
  *
@@ -137,7 +137,7 @@ void LowPowerGapProcess_Register(pfnLowPowerGapProcessCB_t cb)
 /*******************************************************************************
  * @fn      HAL_SleepInit
  *
- * @brief   ÅäÖÃË¯Ãß»½ĞÑµÄ·½Ê½   - RTC»½ĞÑ£¬´¥·¢Ä£Ê½
+ * @brief   é…ç½®ç¡çœ å”¤é†’çš„æ–¹å¼   - RTCå”¤é†’ï¼Œè§¦å‘æ¨¡å¼
  *
  * @param   None.
  *
@@ -147,10 +147,10 @@ void HAL_SleepInit(void)
 {
 #if(defined(HAL_SLEEP)) && (HAL_SLEEP == TRUE)
     sys_safe_access_enable();
-    R8_SLP_WAKE_CTRL |= RB_SLP_RTC_WAKE; // RTC»½ĞÑ
+    R8_SLP_WAKE_CTRL |= RB_SLP_RTC_WAKE; // RTCå”¤é†’
     sys_safe_access_disable();
     sys_safe_access_enable();
-    R8_RTC_MODE_CTRL |= RB_RTC_TRIG_EN;  // ´¥·¢Ä£Ê½
+    R8_RTC_MODE_CTRL |= RB_RTC_TRIG_EN;  // è§¦å‘æ¨¡å¼
     sys_safe_access_disable();
     PFIC_EnableIRQ(RTC_IRQn);
 #endif
