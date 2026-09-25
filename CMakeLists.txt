@@ -51,6 +51,29 @@ set(WCH_PROJECT_FLAGS
     --param=highcode-gen-section-name=1)
 
 # -----------------------------------------------------------------------------
+#  WCH closed-source BLE stack (vendor-forked under ble/)
+#
+#  Default OFF: build is byte-identical to the USB-only firmware, no BLE code
+#  or symbols leak in.
+#
+#  When ON: vendor's peripheral-only BLE library is linked, the HAL sources
+#  (MCU.c / RTC.c / SLEEP.c) plus ble_task_scheduler.S are compiled, and
+#  src/main.c initialises the stack behind #ifdef WCH_BLE_ENABLE. Phase 1a
+#  is build/link integration only - no mouse data over BLE yet.
+#
+#  Notes:
+#  - HAL/MCU.c calls EEPROM_READ / EEPROM_WRITE / GetMACAddress / SYS_GetSysTickCnt;
+#    these are already in CH58x_sys.c / ISP585.h. RTC.c calls RTC_InitTime from
+#    CH58x_clk.c. No new StdPeriphDriver dependencies.
+#  - PERI library already provides strong Ecall_M/U_Mode_Handler and LLE_IRQHandler
+#    in .highcode.LLE_IRQHandler. ble_task_scheduler.S defines the same symbols in
+#    the same section; the linker keeps the library copy (functionally identical).
+#  - Startup/startup_CH585.S declares all BLE-related ISRs as WEAK; the
+#    PERI library's strong definitions override the default infinite-loop stubs.
+# -----------------------------------------------------------------------------
+option(WCH_BLE_ENABLE "Link the closed-source WCH BLE stack (peripheral-only)" OFF)
+
+# -----------------------------------------------------------------------------
 #  Sources (kept explicit to match the vendor build exactly; docs/ excluded)
 # -----------------------------------------------------------------------------
 set(APP_SOURCES
@@ -59,6 +82,8 @@ set(APP_SOURCES
     src/main.c
     src/log.c
     src/bat.c
+    src/transport.c
+    src/transport_usb.c
     src/motor.c
     src/mouse.c
     src/paw3395.c
@@ -67,6 +92,32 @@ set(APP_SOURCES
     src/bmi270_port.c
     src/rgb.c
     src/usb_desc.c)
+
+# Vendor-forked BLE HAL: initialises the radio, configures the 32K clock,
+# and registers the HAL task with TMOS. Only compiled when WCH_BLE_ENABLE=ON.
+set(BLE_HAL_SOURCES
+    ble/HAL/MCU.c
+    ble/HAL/RTC.c
+    ble/HAL/SLEEP.c)
+
+# Vendor-forked HOGP GATT profile layer (HID 0x1812, Battery 0x180F,
+# Device Information 0x180A, Scan Parameters). Forked byte-identical from
+# docs/CH585EVT/EVT/EXAM/BLE/HID_Mouse/Profile/ with one substantive
+# change: hidmouseservice.c has its HID report map replaced with the
+# 6-byte mouse descriptor that matches src/mouse.h's MouseReport_t.
+set(BLE_PROFILE_SOURCES
+    ble/Profile/hiddev.c
+    ble/Profile/hidmouseservice.c
+    ble/Profile/battservice.c
+    ble/Profile/devinfoservice.c
+    ble/Profile/scanparamservice.c
+    src/transport_ble.c)
+
+# Vendor-supplied BLE interrupt trampolines. PERI library already provides
+# the same symbols; the linker picks one copy. Both define them in
+# .highcode.LLE_IRQHandler (functionally identical code paths).
+set(BLE_ASM_SOURCES
+    ble/LIB/ble_task_scheduler.S)
 
 set(DRIVER_SOURCES
     StdPeriphDriver/CH58x_adc.c
@@ -95,10 +146,17 @@ set(DRIVER_SOURCES
 set(STARTUP_SOURCES
     Startup/startup_CH585.S)
 
+# Conditional BLE sources (HAL C + Profile GATT services + asm trampolines)
+set(_BLE_SOURCES "")
+if(WCH_BLE_ENABLE)
+  list(APPEND _BLE_SOURCES ${BLE_HAL_SOURCES} ${BLE_PROFILE_SOURCES} ${BLE_ASM_SOURCES})
+endif()
+
 add_executable(${PROJECT_NAME}
     ${APP_SOURCES}
     ${DRIVER_SOURCES}
-    ${STARTUP_SOURCES})
+    ${STARTUP_SOURCES}
+    ${_BLE_SOURCES})
 
 # -----------------------------------------------------------------------------
 #  Include paths  (-I)
@@ -107,6 +165,14 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/RVMSIS)
+
+if(WCH_BLE_ENABLE)
+  target_include_directories(${PROJECT_NAME} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/ble/LIB
+      ${CMAKE_CURRENT_SOURCE_DIR}/ble/HAL/include
+      ${CMAKE_CURRENT_SOURCE_DIR}/ble/Profile
+      ${CMAKE_CURRENT_SOURCE_DIR}/ble/Profile/include)
+endif()
 
 # -----------------------------------------------------------------------------
 #  Defines  (-D)
@@ -121,6 +187,10 @@ set(WCH_LOG_LEVEL "LOG_LVL_INFO" CACHE STRING "Compile-time log level ceiling")
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     DEBUG=${WCH_DEBUG_UART}
     LOG_LEVEL=${WCH_LOG_LEVEL})
+
+if(WCH_BLE_ENABLE)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE WCH_BLE_ENABLE)
+endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${WCH_PROJECT_FLAGS})
 
@@ -140,6 +210,15 @@ target_link_options(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ISP585
     m)
+
+if(WCH_BLE_ENABLE)
+  # Vendor-forked peripheral-only BLE library. ~1.1 MB archive; the linker
+  # pulls in only the .o files needed to resolve BLE_LibInit / GAPRole_*
+  # / tmos_* / ATT_* / GAP_* etc. The full libCH58xBLE.a is left on disk
+  # in ble/LIB/ as a fallback if PERI ever fails to resolve something.
+  target_link_libraries(${PROJECT_NAME} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/ble/LIB/libCH58xBLE_PERI.a)
+endif()
 
 # Firmware image keeps the .elf suffix.
 set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".elf")

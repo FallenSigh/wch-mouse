@@ -10,16 +10,33 @@
 #include "rgb.h"
 #include "paw3395.h"
 #include "bat.h"
+#include "transport.h"
+
+#ifdef WCH_BLE_ENABLE
+/* Vendor BLE stack includes (paths added by CMake when WCH_BLE_ENABLE=ON).
+ * CONFIG.h declares MEM_BUF, MacAddr and pulls in CH58xBLE_LIB.h.
+ * HAL.h pulls CONFIG.h / RTC.h / SLEEP.h and declares CH58x_BLEInit / HAL_Init. */
+#include "CONFIG.h"
+#include "HAL.h"
+/* GAPRole_PeripheralInit / TMOS_SystemProcess come from CH58xBLE_LIB.h. */
+#endif
 
 static volatile uint32_t s_tick_ms;
+
+#ifdef WCH_BLE_ENABLE
+/* BLE protocol-stack heap. The PERI library's BLE_LibInit rejects anything
+ * below 4 KiB; default is 6 KiB (BLE_MEMHEAP_SIZE in CONFIG.h). The vendor
+ * HID_Mouse example uses the same alignment attribute. */
+__attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
+#endif
 
 /* Default sensor resolution at boot (gaming-baseline CPI). The driver
  * clamps to its supported range [50, 26000]. */
 #define MOUSE_DEFAULT_CPI   1600u
 
-__INTERRUPT void TMR3_IRQHandler() {
-    if (TMR3_GetITFlag(TMR0_3_IT_CYC_END)) {
-        TMR3_ClearITFlag(TMR0_3_IT_CYC_END);
+__INTERRUPT void TMR0_IRQHandler() {
+    if (TMR0_GetITFlag(TMR0_3_IT_CYC_END)) {
+        TMR0_ClearITFlag(TMR0_3_IT_CYC_END);
         s_tick_ms++;
     }
 }
@@ -49,6 +66,23 @@ int main() {
     HSECFG_Capacitance(HSECap_12p);
     SetSysClock(SYSCLK_FREQ);
 
+#ifdef WCH_BLE_ENABLE
+    /* Vendor init order: radio stack, then HAL task registration (which also
+     * brings up the 32K clock for TMOS), then the peripheral GAP role.
+     * GAPRole_PeripheralInit only registers the role - it does NOT start
+     * advertising. The HID/Battery/DeviceInfo GATT profile and the
+     * transport_ble.init() chain run later via transport_router_init(),
+     * which calls transport_ble.init() -> HidDev_Init() -> Hid_AddService()
+     * -> Batt_Setup() etc., and then tmos_set_event schedules the first
+     * GAPRole_PeripheralStartDevice (advertising). */
+    CH58x_BLEInit();
+    HAL_Init();
+    {
+        bStatus_t s = GAPRole_PeripheralInit();
+        (void)s;
+    }
+#endif
+
     GPIOPinRemap(DISABLE, RB_RF_ANT_SW_EN);
 
     /* Release the BIO module from reset before expecting its UART traffic. */
@@ -75,11 +109,14 @@ int main() {
     PFIC_EnableIRQ( USB2_DEVICE_IRQn );
 
     mouse_init();
+    transport_router_init();
 
-    // TIM3 at 1kHz for button debouncing
-    TMR3_TimerInit(FREQ_SYS / 1000);
-    TMR3_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
-    PFIC_EnableIRQ(TMR3_IRQn);
+    /* TIM0 at 1 kHz for the mouse tick. Deliberately NOT TIM3: the BLE HAL
+     * hijacks TMR3_IRQHandler when RF_8K is defined, which would silently
+     * freeze this tick in tri-mode builds. */
+    TMR0_TimerInit(FREQ_SYS / 1000);
+    TMR0_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
+    PFIC_EnableIRQ(TMR0_IRQn);
 
     rgb_init();
     paw3395_init();
@@ -112,6 +149,11 @@ int main() {
     uint32_t last_btn_scan = 0;
     uint8_t data[12];
     while(1) {
+#ifdef WCH_BLE_ENABLE
+        /* TMOS tick is 625 us and MUST be pumped from main-loop context;
+         * calling it from an ISR corrupts the scheduler. */
+        TMOS_SystemProcess();
+#endif
         UART3_DataRx_Deal();
         UART3_DataTx_Deal();
 
@@ -119,6 +161,8 @@ int main() {
             last_btn_scan = s_tick_ms;
             mouse_scan(s_tick_ms);
         }
+
+        transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
 

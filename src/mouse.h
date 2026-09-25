@@ -12,8 +12,6 @@
 #define HID_BTN_MASK      (HID_BTN_LEFT | HID_BTN_RIGHT | HID_BTN_MID \
                            | HID_BTN_BACK | HID_BTN_FWD)
 
-#define HID_MOUSE_EP      DEF_UEP4
-
 #ifdef __cplusplus
 extern "C" {
 #endif

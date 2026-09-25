@@ -1,5 +1,6 @@
 #include "mouse.h"
-#include "ch585_usbhs_device.h"
+#include "CH58x_common.h"
+#include "transport.h"
 #include "paw3395.h"
 #include "log.h"
 
@@ -119,5 +120,5 @@ void mouse_scan(uint32_t now_ms) {
         .wheel   = wheel
     };
 
-    USBHS_Endp_DataUp(HID_MOUSE_EP, (uint8_t *)&rpt, sizeof(rpt), DEF_UEP_CPY_LOAD);
+    transport_router_publish(&rpt);
 }
