@@ -178,7 +178,6 @@ int main() {
 
     LOG_I("MAIN", "init done");
 
-    uint32_t last_btn_scan = 0;
     uint8_t data[12];
     bool bio_host = false;
     while(1) {
@@ -213,10 +212,7 @@ int main() {
             }
         }
 
-        if (s_tick_ms - last_btn_scan >= 1) {
-            last_btn_scan = s_tick_ms;
-            mouse_scan(s_tick_ms);
-        }
+        mouse_scan(s_tick_ms);
 
         transport_router_poll(s_tick_ms);
 

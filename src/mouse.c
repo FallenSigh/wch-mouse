@@ -20,6 +20,10 @@ static volatile uint8_t s_btn_stable;
 static volatile uint8_t s_btn_history;
 static volatile uint8_t s_btn_match;
 
+static uint32_t s_stat_ms;
+static uint32_t s_scan_cnt;
+static uint32_t s_pub_cnt;
+
 #define DEBOUNCE_SAMPLES   3
 
 /* ===== scroll wheel: 2-bit Gray-code quadrature (PB8=A, PB19=B) =====
@@ -78,8 +82,17 @@ void mouse_init() {
 }
 
 void mouse_scan(uint32_t now_ms) {
+    static uint32_t last_ms;
+
+    if (now_ms == last_ms) {
+        return;
+    }
+    last_ms = now_ms;
+
     uint32_t pins = GPIOB_ReadPort();
     uint8_t button_changed = 0;
+
+    s_scan_cnt++;
 
     uint8_t raw_btn = 0;
     if (!(pins & BTN_LEFT_PIN))   raw_btn |= HID_BTN_LEFT;
@@ -109,16 +122,22 @@ void mouse_scan(uint32_t now_ms) {
     int8_t  wheel = encoder_update(pins);
 
     /* Send when the buttons changed, the wheel turned, or we have motion. */
-    if (!button_changed && dx == 0 && dy == 0 && wheel == 0) {
-        return;
+    if (button_changed || dx != 0 || dy != 0 || wheel != 0) {
+        MouseReport_t rpt = {
+            .buttons = s_btn_stable,
+            .dx      = -dx,
+            .dy      = -dy,
+            .wheel   = wheel
+        };
+
+        s_pub_cnt++;
+        transport_router_publish(&rpt);
     }
 
-    MouseReport_t rpt = {
-        .buttons = s_btn_stable,
-        .dx      = -dx,
-        .dy      = -dy,
-        .wheel   = wheel
-    };
-
-    transport_router_publish(&rpt);
+    if (now_ms - s_stat_ms >= 5000u) {
+        s_stat_ms = now_ms;
+        LOG_I("MOUSE", "scan %u pub %u in 5s", (unsigned)s_scan_cnt, (unsigned)s_pub_cnt);
+        s_scan_cnt = 0;
+        s_pub_cnt = 0;
+    }
 }
