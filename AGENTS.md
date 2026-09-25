@@ -30,7 +30,7 @@ cmake --build --preset wch  # -> build/wch-mouse.{elf,hex,lst,map}
 - `src/` — application code (edit here).
 - `StdPeriphDriver/`, `Startup/`, `RVMSIS/`, `Ld/Link.ld` — vendor SDK. Do not edit; formatting is disabled there to preserve WCH style.
 - `ble/` — vendor-forked BLE HAL + GATT profiles + prebuilt closed-source libs (`libCH58xBLE_PERI.a` peripheral-only; full `libCH58xBLE.a` kept as fallback). Only `src/transport_ble.c` is ours.
-- `docs/` — datasheets + `io.csv` pin map (tracked). `docs/CH585EVT/` (75 MB vendor SDK) is **gitignored/local-only**; `ble/Profile/` is byte-identical to `docs/CH585EVT/EVT/EXAM/BLE/HID_Mouse/Profile/` except the HID report map in `hidmouseservice.c`.
+- `docs/` — datasheets + `io.csv` pin map (tracked). `docs/CH585EVT/` (75 MB vendor SDK) is **gitignored/local-only**. `ble/` is stored as UTF-8 while the vendor copies under `docs/CH585EVT` are GBK, so raw diffs show comment-encoding noise; `ble/Profile/` also differs from the vendor `HID_Mouse/Profile/` by the HID report map in `hidmouseservice.c` and logging in `hiddev.c`.
 - New `.c` files must be added to `APP_SOURCES` in `CMakeLists.txt` — source lists are explicit, there is no glob.
 - Linker: FLASH 448K @ 0x0, RAM 128K @ 0x20000000; custom `Ld/Link.ld`, no CRT/libc (`-nostartfiles`, `nano.specs` + `nosys.specs`). C99, soft-float.
 
