@@ -1,16 +1,26 @@
 #include "transport.h"
 #include "ch585_usbhs_device.h"
+#include "bat.h"
 
 #define USB_HID_EP   DEF_UEP4
 
+/* USBHS_DevEnumStatus alone is not enough: the WCH driver only clears it on a
+ * bus reset, so unplugging the cable leaves it set and the router keeps
+ * sending into a dead link. The charger's PGOOD pin drops as soon as VBUS
+ * goes away, so require it too. */
+static bool usb_ready(void)
+{
+    return (USBHS_DevEnumStatus != 0) && bat_power_good();
+}
+
 static bool usb_link_up(void)
 {
-    return USBHS_DevEnumStatus != 0;
+    return usb_ready();
 }
 
 static bool usb_send(const MouseReport_t *rpt)
 {
-    if (!USBHS_DevEnumStatus) {
+    if (!usb_ready()) {
         return false;
     }
 
