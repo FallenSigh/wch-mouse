@@ -834,6 +834,9 @@ static void hidDevParamUpdateCB(uint16_t connHandle, uint16_t connInterval,
  */
 static void hidDevPairStateCB(uint16_t connHandle, uint8_t state, uint8_t status)
 {
+    LOG_I("HID", "pair state=%u status=0x%02X conn=0x%04X",
+          (unsigned)state, (unsigned)status, (unsigned)connHandle);
+
     if(state == GAPBOND_PAIRING_STATE_COMPLETE)
     {
         if(status == SUCCESS)
@@ -874,6 +877,8 @@ static void hidDevPairStateCB(uint16_t connHandle, uint8_t state, uint8_t status
 static void hidDevPasscodeCB(uint8_t *deviceAddr, uint16_t connectionHandle,
                              uint8_t uiInputs, uint8_t uiOutputs)
 {
+    LOG_I("HID", "passcode cb in=%u out=%u", (unsigned)uiInputs, (unsigned)uiOutputs);
+
     if(pHidDevCB && pHidDevCB->passcodeCB)
     {
         // execute HID app passcode callback

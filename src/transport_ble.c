@@ -43,6 +43,7 @@ static uint32_t s_tx_attempts;
 static uint32_t s_tx_sent;
 static uint32_t s_tx_stats_ms;
 static uint32_t s_tx_ms;
+static uint8_t  s_tx_fail_logged;
 
 /* Pace notifications to roughly one per connection interval. The main loop
  * has no delay, so polling HidDev_Report unconditionally hammers the stack's
@@ -207,7 +208,10 @@ static uint8_t s_hidRptCB(uint8_t id, uint8_t type, uint16_t uuid,
     /* The host has finished service discovery and subscribed, which is the
      * most reliable moment to ask for HID-friendly connection parameters. */
     if (oper == HID_DEV_OPER_ENABLE) {
+        LOG_I("HID", "notify enabled");
         ble_request_fast_conn();
+    } else if (oper == HID_DEV_OPER_DISABLE) {
+        LOG_I("HID", "notify disabled");
     }
 
     return SUCCESS;
@@ -255,7 +259,16 @@ static void s_gapStateCB(gapRole_States_t newState, gapRoleEvent_t *pEvent)
         }
         break;
 
-    case GAPROLE_STARTED:
+    case GAPROLE_STARTED: {
+        /* Vendor parity: pin the controller to a static address so the host
+         * keeps recognising the device (and its bond) across reboots. */
+        uint8_t ownAddr[6];
+
+        GAPRole_GetParameter(GAPROLE_BD_ADDR, ownAddr);
+        GAP_ConfigDeviceAddr(ADDRTYPE_STATIC, ownAddr);
+        break;
+    }
+
     case GAPROLE_ADVERTISING:
     case GAPROLE_CONNECTED_ADV:
     case GAPROLE_ERROR:
@@ -297,8 +310,13 @@ static bool ble_flush(void)
 
     s_tx_attempts++;
 
-    if (HidDev_Report(HID_RPT_ID_MOUSE_IN, HID_REPORT_TYPE_INPUT,
-                      sizeof(s_pending), (uint8_t *)&s_pending) != SUCCESS) {
+    const uint8_t st = HidDev_Report(HID_RPT_ID_MOUSE_IN, HID_REPORT_TYPE_INPUT,
+                                     sizeof(s_pending), (uint8_t *)&s_pending);
+    if (st != SUCCESS) {
+        if (s_tx_fail_logged < 3u) {
+            s_tx_fail_logged++;
+            LOG_W("BLE", "report failed: 0x%02X", (unsigned)st);
+        }
         return false;               /* link busy - keep accumulating */
     }
 
@@ -378,7 +396,12 @@ static bool ble_init(void)
 
     {
         uint32_t passkey = DEV_PASSCODE;
-        uint8_t  pairMode = GAPBOND_PAIRING_MODE_WAIT_FOR_REQ;
+        /* The vendor example uses WAIT_FOR_REQ, which relies on the host to
+         * start pairing. Hosts that do not (many scanners, some PC stacks)
+         * leave the link unencrypted, so our ENCRYPT_WRITE CCCD can never be
+         * subscribed and HidDev_Report() stays gated. INITIATE makes the
+         * peripheral send a slave security request on connect instead. */
+        uint8_t  pairMode = GAPBOND_PAIRING_MODE_INITIATE;
         uint8_t  mitm = FALSE;
         uint8_t  ioCap = DEV_IO_CAP;
         uint8_t  bonding = TRUE;
