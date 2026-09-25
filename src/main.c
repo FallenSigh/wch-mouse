@@ -23,6 +23,12 @@
 
 static volatile uint32_t s_tick_ms;
 
+#ifdef WCH_DCDC_ENABLE
+/* Factory hardware-config word, read before PWR_DCDCCfg() so we can report
+ * whether it refused to enable the DC-DC. */
+static uint32_t s_dcdc_hw[2];
+#endif
+
 #ifdef WCH_BLE_ENABLE
 /* BLE protocol-stack heap. The PERI library's BLE_LibInit rejects anything
  * below 4 KiB; default is 6 KiB (BLE_MEMHEAP_SIZE in CONFIG.h). The vendor
@@ -63,6 +69,20 @@ static struct bmi2_dev bmi;
 int main() {
     uint8_t len;
 
+#ifdef WCH_DCDC_ENABLE
+    /* The chip powers up on its pass-through LDO; switching on the internal
+     * DC-DC drops run current to ~60% of that. Requires the 10 uH inductor
+     * between VSW and VDCID to be fitted (present on this board). Vendor
+     * order is to enable it before touching the clock configuration.
+     *
+     * PWR_DCDCCfg() silently does nothing when bit 13 of the factory
+     * hardware-config word (ROM_CFG_ADR_HW) is set, so capture that word and
+     * later report it together with the resulting RB_PWR_DCDC_EN state -
+     * otherwise there is no way to tell "DC-DC on" from "call ignored". */
+    FLASH_EEPROM_CMD(CMD_GET_ROM_INFO, ROM_CFG_ADR_HW, s_dcdc_hw, 0);
+    PWR_DCDCCfg(ENABLE);
+#endif
+
     HSECFG_Capacitance(HSECap_12p);
     SetSysClock(SYSCLK_FREQ);
 
@@ -97,6 +117,13 @@ int main() {
     log_init(LOG_LEVEL);
     log_set_clock(tick_ms);
 
+#ifdef WCH_DCDC_ENABLE
+    LOG_I("PWR", "dcdc hw0=0x%08X bit13=%u plan=0x%04X enabled=%u",
+          (unsigned)s_dcdc_hw[0], (unsigned)((s_dcdc_hw[0] >> 13) & 1u),
+          (unsigned)R16_POWER_PLAN,
+          (unsigned)((R16_POWER_PLAN & RB_PWR_DCDC_EN) ? 1u : 0u));
+#endif
+
     /* Tim2 init */
     TMR2_TimerInit(FREQ_SYS / 10000);
     TMR2_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
@@ -105,8 +132,13 @@ int main() {
     /* Usart3 init */
     UART3_Init( 1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY  );
 
-    USBHS_Device_Init(ENABLE);
-    PFIC_EnableIRQ( USB2_DEVICE_IRQn );
+    /* UART3 feeds the BIO module's USB CDC bridge. With no host attached its
+     * receive interrupt would fire once per incoming byte and accumulate data
+     * nobody can read, so keep it off until USB comes up. */
+    UART3_INTCfg(DISABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
+
+    /* The USBHS PHY is now owned by transport_usb: it powers up only while
+     * VBUS is present, so it does not burn 10-20 mA on battery. */
 
     mouse_init();
     transport_router_init();
@@ -148,14 +180,38 @@ int main() {
 
     uint32_t last_btn_scan = 0;
     uint8_t data[12];
+    bool bio_host = false;
     while(1) {
 #ifdef WCH_BLE_ENABLE
         /* TMOS tick is 625 us and MUST be pumped from main-loop context;
          * calling it from an ISR corrupts the scheduler. */
         TMOS_SystemProcess();
 #endif
-        UART3_DataRx_Deal();
-        UART3_DataTx_Deal();
+
+        /* UART3 <-> USB CDC bridge: it only has a consumer while a USB host
+         * is really attached, and it pokes USB endpoint registers, so skip
+         * both halves unless USB is the active link. The BIO module's receive
+         * interrupt is gated with it. */
+        {
+            const bool usb_host = (transport_router_active() == TR_USB);
+
+            if (usb_host != bio_host) {
+                bio_host = usb_host;
+                if (usb_host) {
+                    UART3_INTCfg(ENABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
+                } else {
+                    UART3_INTCfg(DISABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
+                    CDC.Uart_RecLen    = 0;   /* drop data buffered with no host */
+                    CDC.Uart_Input_Ptr = 0;
+                    CDC.Uart_Output_Ptr = 0;
+                }
+            }
+
+            if (usb_host) {
+                UART3_DataRx_Deal();
+                UART3_DataTx_Deal();
+            }
+        }
 
         if (s_tick_ms - last_btn_scan >= 1) {
             last_btn_scan = s_tick_ms;

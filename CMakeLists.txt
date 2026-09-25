@@ -73,6 +73,12 @@ set(WCH_PROJECT_FLAGS
 # -----------------------------------------------------------------------------
 option(WCH_BLE_ENABLE "Link the closed-source WCH BLE stack (peripheral-only)" OFF)
 
+# CH585 internal DC-DC: brings run current down to roughly 60% of the default
+# pass-through LDO. It REQUIRES a 10 uH inductor between VSW and VDCID on the
+# board - the datasheet's own wording is "启用前需确认外部硬件电路上存在 DC-DC
+# 所需的电感和电容". Set OFF for any board that straps VSW straight to VDCID.
+option(WCH_DCDC_ENABLE "Enable the CH585 internal DC-DC (needs the VSW inductor fitted)" ON)
+
 # -----------------------------------------------------------------------------
 #  Sources (kept explicit to match the vendor build exactly; docs/ excluded)
 # -----------------------------------------------------------------------------
@@ -190,6 +196,10 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 
 if(WCH_BLE_ENABLE)
   target_compile_definitions(${PROJECT_NAME} PRIVATE WCH_BLE_ENABLE)
+endif()
+
+if(WCH_DCDC_ENABLE)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE WCH_DCDC_ENABLE)
 endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${WCH_PROJECT_FLAGS})
