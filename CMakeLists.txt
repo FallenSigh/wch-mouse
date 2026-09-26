@@ -117,3 +117,8 @@ if(WCH_BLE_ENABLE)
 elseif(WCH_RF_ENABLE)
   wch_firmware_radio(wch-mouse RF)
 endif()
+
+# -----------------------------------------------------------------------------
+#  2.4G receiver dongle - same toolchain, SDK and USB HID device layer.
+# -----------------------------------------------------------------------------
+add_subdirectory(dongle)
