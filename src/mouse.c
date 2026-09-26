@@ -9,7 +9,6 @@
 #define BTN_MID_PIN       GPIO_Pin_9     // PB9   PR_SW3
 #define BTN_SIDE1_PIN     GPIO_Pin_11    // PB11  PR_SW4 (Back)
 #define BTN_SIDE2_PIN     GPIO_Pin_4     // PB4   PR_SW5 (Forward)
-
 #define ENC_A_PIN         GPIO_Pin_8     // PB8   ENC_A
 #define ENC_B_PIN         GPIO_Pin_19    // PB19  ENC_B
 
@@ -20,8 +19,9 @@ static volatile uint8_t s_btn_stable;
 static volatile uint8_t s_btn_history;
 static volatile uint8_t s_btn_match;
 
+static struct paw3395_dev *s_sensor;
+
 static uint32_t s_stat_ms;
-static uint32_t s_scan_cnt;
 static uint32_t s_pub_cnt;
 
 #define DEBOUNCE_SAMPLES   3
@@ -67,21 +67,26 @@ static int8_t encoder_update(uint32_t pins)
     return (int8_t)(steps * ENC_WHEEL_SIGN);
 }
 
-void mouse_init() {
+void mouse_init(struct paw3395_dev *sensor)
+{
+    s_sensor = sensor;
+
     GPIOB_ModeCfg(INPUT_ALL_PINS, GPIO_ModeIN_PU);
 
     s_btn_stable  = HID_BTN_MASK;
     s_btn_history = HID_BTN_MASK;
     s_btn_match   = 0;
 
-    uint32_t pins = GPIOB_ReadPort();
+    const uint32_t pins = GPIOB_ReadPort();
+
     s_enc_prev  = (uint8_t)(((pins & ENC_A_PIN) ? 2u : 0u) | ((pins & ENC_B_PIN) ? 1u : 0u));
     s_enc_accum = 0;
 
     LOG_I("MOUSE", "L=PB7 R=PB1 M=PB9 S1=PB11 S2=PB4 ENC_A=PB8 ENC_B=PB19");
 }
 
-void mouse_scan(uint32_t now_ms) {
+void mouse_scan(uint32_t now_ms)
+{
     static uint32_t last_ms;
 
     if (now_ms == last_ms) {
@@ -89,10 +94,8 @@ void mouse_scan(uint32_t now_ms) {
     }
     last_ms = now_ms;
 
-    uint32_t pins = GPIOB_ReadPort();
+    const uint32_t pins = GPIOB_ReadPort();
     uint8_t button_changed = 0;
-
-    s_scan_cnt++;
 
     uint8_t raw_btn = 0;
     if (!(pins & BTN_LEFT_PIN))   raw_btn |= HID_BTN_LEFT;
@@ -115,10 +118,10 @@ void mouse_scan(uint32_t now_ms) {
     }
 
     uint8_t buf[12];
-    paw3395_burst(buf);
+    paw3395_burst(s_sensor, buf);
 
-    int16_t dx = (int16_t)buf[2] | buf[3] << 8;
-    int16_t dy = (int16_t)buf[4] | buf[5] << 8;
+    int16_t dx = (int16_t)(buf[2] | (buf[3] << 8));
+    int16_t dy = (int16_t)(buf[4] | (buf[5] << 8));
     int8_t  wheel = encoder_update(pins);
 
     /* Send when the buttons changed, the wheel turned, or we have motion. */
@@ -136,8 +139,7 @@ void mouse_scan(uint32_t now_ms) {
 
     if (now_ms - s_stat_ms >= 5000u) {
         s_stat_ms = now_ms;
-        LOG_I("MOUSE", "scan %u pub %u in 5s", (unsigned)s_scan_cnt, (unsigned)s_pub_cnt);
-        s_scan_cnt = 0;
+        LOG_I("MOUSE", "pub %u in 5s", (unsigned)s_pub_cnt);
         s_pub_cnt = 0;
     }
 }

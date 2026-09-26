@@ -93,6 +93,7 @@ set(APP_SOURCES
     src/motor.c
     src/mouse.c
     src/paw3395.c
+    src/paw3395_port.c
     src/bmi270.c
     src/bmi2.c
     src/bmi270_port.c

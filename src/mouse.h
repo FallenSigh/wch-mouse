@@ -23,7 +23,9 @@ typedef struct __attribute__((packed)) {
     int8_t  wheel;
 } MouseReport_t;
 
-void mouse_init();
+struct paw3395_dev;
+
+void mouse_init(struct paw3395_dev *sensor);
 void mouse_scan(uint32_t now_ms);
 void mouse_set_cpi(uint16_t cpi);
 

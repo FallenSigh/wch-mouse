@@ -9,6 +9,7 @@
 #include "mouse.h"
 #include "rgb.h"
 #include "paw3395.h"
+#include "paw3395_port.h"
 #include "bat.h"
 #include "transport.h"
 
@@ -64,6 +65,7 @@ void bio_reset(void)
     mDelaymS(100);                  /* module boot time */
 }
 
+static struct paw3395_dev paw;
 static struct bmi2_dev bmi;
 
 int main() {
@@ -140,7 +142,7 @@ int main() {
     /* The USBHS PHY is now owned by transport_usb: it powers up only while
      * VBUS is present, so it does not burn 10-20 mA on battery. */
 
-    mouse_init();
+    mouse_init(&paw);
     transport_router_init();
 
     /* TIM0 at 1 kHz for the mouse tick. Deliberately NOT TIM3: the BLE HAL
@@ -151,8 +153,10 @@ int main() {
     PFIC_EnableIRQ(TMR0_IRQn);
 
     rgb_init();
-    paw3395_init();
-    paw3395_set_cpi(800);
+    paw3395_port_init(&paw);
+    paw3395_set_cpi(&paw, 800);
+    paw3395_set_mode(&paw, PAW3395_MODE_OFFICE);
+    paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
     bat_init();
 
     if (bmi270_port_init(&bmi) != BMI2_OK) {
