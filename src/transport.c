@@ -4,14 +4,21 @@
 #include "log.h"
 
 extern const transport_t transport_usb;
+#ifdef WCH_RF_ENABLE
+extern const transport_t transport_rf;
+#endif
 #ifdef WCH_BLE_ENABLE
 extern const transport_t transport_ble;
 #endif
 
 /* Priority order: s_backends[0] wins. USB is wired and always present, so it
- * outranks the radio backends added later. */
+ * outranks the radio backends added later. RF outranks BLE (lower latency) but
+ * RF and BLE share the radio, so only one of them may be enabled. */
 static const transport_t * const s_backends[] = {
     &transport_usb,
+#ifdef WCH_RF_ENABLE
+    &transport_rf,
+#endif
 #ifdef WCH_BLE_ENABLE
     &transport_ble,
 #endif

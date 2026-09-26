@@ -13,6 +13,8 @@
  * main-loop only. HidDev_Report is NOT safe to call from an ISR.
  */
 
+#include <stddef.h>
+
 #include "transport.h"
 #include "log.h"
 #include "bat.h"

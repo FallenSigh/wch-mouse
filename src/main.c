@@ -13,13 +13,13 @@
 #include "bat.h"
 #include "transport.h"
 
-#ifdef WCH_BLE_ENABLE
-/* Vendor BLE stack includes (paths added by CMake when WCH_BLE_ENABLE=ON).
+#if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
+/* Radio stack includes (CMake adds these paths for WCH_BLE_ENABLE/WCH_RF_ENABLE).
+ * The BLE HID and 2.4G RF transports both run on this vendor stack.
  * CONFIG.h declares MEM_BUF, MacAddr and pulls in CH58xBLE_LIB.h.
  * HAL.h pulls CONFIG.h / RTC.h / SLEEP.h and declares CH58x_BLEInit / HAL_Init. */
 #include "CONFIG.h"
 #include "HAL.h"
-/* GAPRole_PeripheralInit / TMOS_SystemProcess come from CH58xBLE_LIB.h. */
 #endif
 
 static volatile uint32_t s_tick_ms;
@@ -30,10 +30,9 @@ static volatile uint32_t s_tick_ms;
 static uint32_t s_dcdc_hw[2];
 #endif
 
-#ifdef WCH_BLE_ENABLE
-/* BLE protocol-stack heap. The PERI library's BLE_LibInit rejects anything
- * below 4 KiB; default is 6 KiB (BLE_MEMHEAP_SIZE in CONFIG.h). The vendor
- * HID_Mouse example uses the same alignment attribute. */
+#if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
+/* Protocol-stack heap. The PERI library's BLE_LibInit rejects anything below
+ * 4 KiB; default is 6 KiB (BLE_MEMHEAP_SIZE in CONFIG.h). */
 __attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
 #endif
 
@@ -41,9 +40,9 @@ __attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
  * clamps to its supported range [50, 26000]. */
 #define MOUSE_DEFAULT_CPI   1600u
 
-__INTERRUPT void TMR0_IRQHandler() {
-    if (TMR0_GetITFlag(TMR0_3_IT_CYC_END)) {
-        TMR0_ClearITFlag(TMR0_3_IT_CYC_END);
+__INTERRUPT void TMR3_IRQHandler() {
+    if (TMR3_GetITFlag(TMR0_3_IT_CYC_END)) {
+        TMR3_ClearITFlag(TMR0_3_IT_CYC_END);
         s_tick_ms++;
     }
 }
@@ -88,21 +87,18 @@ int main() {
     HSECFG_Capacitance(HSECap_12p);
     SetSysClock(SYSCLK_FREQ);
 
-#ifdef WCH_BLE_ENABLE
+#if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
     /* Vendor init order: radio stack, then HAL task registration (which also
-     * brings up the 32K clock for TMOS), then the peripheral GAP role.
-     * GAPRole_PeripheralInit only registers the role - it does NOT start
-     * advertising. The HID/Battery/DeviceInfo GATT profile and the
-     * transport_ble.init() chain run later via transport_router_init(),
-     * which calls transport_ble.init() -> HidDev_Init() -> Hid_AddService()
-     * -> Batt_Setup() etc., and then tmos_set_event schedules the first
-     * GAPRole_PeripheralStartDevice (advertising). */
+     * brings up the 32K clock for TMOS). The RF transport runs on this same
+     * stack; GAPRole_PeripheralInit is BLE-specific. */
     CH58x_BLEInit();
     HAL_Init();
+#ifdef WCH_BLE_ENABLE
     {
         bStatus_t s = GAPRole_PeripheralInit();
         (void)s;
     }
+#endif
 #endif
 
     GPIOPinRemap(DISABLE, RB_RF_ANT_SW_EN);
@@ -145,12 +141,12 @@ int main() {
     mouse_init(&paw);
     transport_router_init();
 
-    /* TIM0 at 1 kHz for the mouse tick. Deliberately NOT TIM3: the BLE HAL
-     * hijacks TMR3_IRQHandler when RF_8K is defined, which would silently
-     * freeze this tick in tri-mode builds. */
-    TMR0_TimerInit(FREQ_SYS / 1000);
-    TMR0_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
-    PFIC_EnableIRQ(TMR0_IRQn);
+    /* TIM3 at 1 kHz for the mouse tick. TIM0 is reserved for the RF transport,
+     * and TIM3 is free here because the BLE HAL only claims TMR3_IRQHandler
+     * when RF_8K is defined (we don't use the 8k RF mode). */
+    TMR3_TimerInit(FREQ_SYS / 1000);
+    TMR3_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
+    PFIC_EnableIRQ(TMR3_IRQn);
 
     rgb_init();
     paw3395_port_init(&paw);
@@ -185,7 +181,7 @@ int main() {
     uint8_t data[12];
     bool bio_host = false;
     while(1) {
-#ifdef WCH_BLE_ENABLE
+#if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
         /* TMOS tick is 625 us and MUST be pumped from main-loop context;
          * calling it from an ISR corrupts the scheduler. */
         TMOS_SystemProcess();

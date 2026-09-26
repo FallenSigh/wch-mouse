@@ -10,8 +10,9 @@
       "toolchainFile": "${sourceDir}/cmake/riscv-wch-toolchain.cmake",
       "cacheVariables": {
         "WCH_DEBUG_UART": "1",
-        "WCH_BLE_ENABLE": "ON",
-        "WCH_DCDC_ENABLE": "ON"
+        "WCH_DCDC_ENABLE": "ON",
+        "WCH_BLE_ENABLE": "OFF",
+        "WCH_RF_ENABLE": "ON"
       }
     }
   ],
