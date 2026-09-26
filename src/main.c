@@ -150,8 +150,8 @@ int main() {
 
     rgb_init();
     paw3395_port_init(&paw);
-    paw3395_set_cpi(&paw, 800);
-    paw3395_set_mode(&paw, PAW3395_MODE_OFFICE);
+    paw3395_set_cpi(&paw, 400);
+    paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);
     paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
     bat_init();
 
