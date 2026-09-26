@@ -25,6 +25,7 @@
 #ifndef __RGB_H__
 #define __RGB_H__
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define RGB_LED_COUNT       2
@@ -35,6 +36,10 @@ extern "C" {
 
 void rgb_init(void);
 void rgb_show(void);
+
+/* Power the LED rail on/off via RGB_EN (PB2). Off cuts power to the chain;
+ * the TIM/DMA keep running, so turning it back on resumes the last frame. */
+void rgb_set_enable(bool on);
 
 void rgb_off(void);
 void rgb_set_pixel(uint8_t i, uint8_t r, uint8_t g, uint8_t b);

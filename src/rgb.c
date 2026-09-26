@@ -83,7 +83,7 @@ void rgb_init(void)
     /* Configure the data pin for the timer to drive; enable the rail. */
     GPIOB_ModeCfg(RGB_DIN_PIN, GPIO_ModeOut_PP_5mA);
     GPIOB_ModeCfg(RGB_EN_PIN,  GPIO_ModeOut_PP_5mA);
-    GPIOB_SetBits(RGB_EN_PIN);
+    rgb_set_enable(true);
 
     memset(s_color, 0, sizeof(s_color));
     s_brightness = 255;
@@ -112,6 +112,15 @@ void rgb_init(void)
 void rgb_off(void)
 {
     memset(s_color, 0, sizeof(s_color));
+}
+
+void rgb_set_enable(bool on)
+{
+    if (on) {
+        GPIOB_SetBits(RGB_EN_PIN);
+    } else {
+        GPIOB_ResetBits(RGB_EN_PIN);
+    }
 }
 
 void rgb_set_brightness(uint8_t b)
