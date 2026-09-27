@@ -9,6 +9,7 @@
 #include "mouse.h"
 #include "rgb.h"
 #include "rgb_fx.h"
+#include "oled.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
 #include "bat.h"
@@ -161,6 +162,11 @@ int main() {
     PFIC_EnableIRQ(TMR3_IRQn);
 
     rgb_init();
+
+    /* OLED: power the panel, run the SSD1315 bring-up and paint the demo. */
+    if (oled_init()) {
+        oled_demo();
+    }
     paw3395_port_init(&paw);
     paw3395_set_cpi(&paw, 400);
     paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);

@@ -94,6 +94,7 @@ set(APP_SOURCES
     src/app/motor.c
     src/app/mouse.c
     src/display/i2c_bus.c
+    src/display/oled.c
     src/display/ssd1315_port.c
     src/display/ssd1315/driver_ssd1315.c
     src/transport/transport.c
