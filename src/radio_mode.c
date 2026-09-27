@@ -112,6 +112,15 @@ bool radio_mode_is(radio_mode_t mode)
     return s_mode == mode;
 }
 
+bool radio_mode_armed(void)
+{
+#if RADIO_MODE_SELECTABLE
+    return s_btn_armed;
+#else
+    return false;
+#endif
+}
+
 void radio_mode_poll(uint32_t now_ms)
 {
 #if RADIO_MODE_SELECTABLE

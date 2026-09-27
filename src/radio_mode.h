@@ -17,6 +17,11 @@ typedef enum {
 void         radio_mode_init(void);
 radio_mode_t radio_mode_get(void);
 bool         radio_mode_is(radio_mode_t mode);
+
+/* True once the BOOT button has been held long enough that releasing it will
+ * switch modes. Lets the UI preview the pending choice while it is held. */
+bool         radio_mode_armed(void);
+
 void         radio_mode_poll(uint32_t now_ms);
 
 #endif /* __RADIO_MODE_H__ */
