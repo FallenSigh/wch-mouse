@@ -38,6 +38,7 @@
 
 #define RGB_BITS_PER_LED       24U
 #define RGB_BITBUF_LEN  (RGB_LED_COUNT * RGB_BITS_PER_LED + RGB_RESET_PERIODS)
+#define RGB_FRAME_BYTES (RGB_LED_COUNT * RGB_BITS_PER_LED * 4U)   /* bit words, no tail */
 
 /* CCR is written 32-bit wide by the DMA into the TIM1 FIFO. Only the low
  * bits are interpreted as the active width; the rest are ignored. We pack
@@ -143,16 +144,38 @@ void rgb_set_all(uint8_t r, uint8_t g, uint8_t b)
     for (uint8_t i = 0; i < RGB_LED_COUNT; i++) rgb_set_pixel(i, r, g, b);
 }
 
+/* Set by rgb_show(), consumed by rgb_poll(). */
+static volatile bool s_dirty;
+
 void rgb_show(void)
 {
-    /* Stop the DMA (the TIM keeps running and holds the last CCR), refresh
-     * the CCR buffer from s_color, then restart the DMA from BEG. The TIM
-     * output stays low while DMA is paused (last CCR in the buffer is 0),
-     * which the WS2812 sees as part of the inter-frame reset. */
-    TMR1_DMACfg(DISABLE, 0, 0, Mode_Single);
-    fill_bitbuf();
-    TMR1_DMACfg(ENABLE,
-                (uint32_t)s_bitbuf,
-                (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
-                Mode_LOOP);
+    /* Only record the request: rgb_poll() does the work. Stopping the DMA here
+     * would freeze the last CCR wherever the frame happened to be, and a CCR
+     * left on a "1" bit keeps the TIM re-emitting it - the chain loses bit
+     * alignment and the LEDs after the first one latch garbage. */
+    s_dirty = true;
+}
+
+void rgb_poll(uint32_t now_ms)
+{
+    uint32_t base;
+    uint32_t now;
+
+    (void)now_ms;
+
+    if (!s_dirty) {
+        return;
+    }
+
+    /* Rewrite the frame only while the DMA is walking the reset tail - past
+     * the last LED's bits, before the loop wraps - so the panel is never
+     * clocked a half-updated frame and the DMA is never stopped. The DMA
+     * registers carry the RAM offset rather than the full address. */
+    base = (uint32_t)(uintptr_t)s_bitbuf & 0x1FFFFu;
+    now  = R32_TMR1_DMA_NOW & 0x1FFFFu;
+
+    if (((now - base) & 0x1FFFFu) >= RGB_FRAME_BYTES) {
+        fill_bitbuf();
+        s_dirty = false;
+    }
 }

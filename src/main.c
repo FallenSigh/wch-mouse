@@ -257,6 +257,7 @@ int main() {
         /* RGB underglow: idle hue cycle, radio-mode announce and the pending
          * switch preview are all inside rgb_fx. */
         rgb_fx_poll(s_tick_ms, radio_mode_is(RADIO_MODE_BLE), radio_mode_armed());
+        rgb_poll(s_tick_ms);
     }
 
     return 0;

@@ -35,7 +35,12 @@ extern "C" {
 #endif
 
 void rgb_init(void);
+
+/* Request a refresh. The frame is written by rgb_poll(), which main must call
+ * from its loop: it defers the buffer update to the DMA's reset tail so no
+ * caller blocks and the LED chain never sees a partially written frame. */
 void rgb_show(void);
+void rgb_poll(uint32_t now_ms);
 
 /* Power the LED rail on/off via RGB_EN (PB2). Off cuts power to the chain;
  * the TIM/DMA keep running, so turning it back on resumes the last frame. */
