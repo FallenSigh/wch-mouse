@@ -129,6 +129,8 @@ function(wch_firmware target flash_suffix)
       ${CMAKE_SOURCE_DIR}/src
       ${CMAKE_SOURCE_DIR}/src/app
       ${CMAKE_SOURCE_DIR}/src/bsp
+      ${CMAKE_SOURCE_DIR}/src/display
+      ${CMAKE_SOURCE_DIR}/src/display/ssd1315
       ${CMAKE_SOURCE_DIR}/src/led
       ${CMAKE_SOURCE_DIR}/src/sensor
       ${CMAKE_SOURCE_DIR}/src/transport
