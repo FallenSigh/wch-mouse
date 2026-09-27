@@ -83,25 +83,27 @@ option(WCH_DCDC_ENABLE "Enable the CH585 internal DC-DC (needs the VSW inductor 
 option(WCH_RF_ENABLE "Use the 2.4G RF transport instead of BLE (radio is shared)" OFF)
 
 # -----------------------------------------------------------------------------
-#  Mouse application sources (kept explicit to match the vendor build exactly;
-#  docs/ excluded). Vendor SDK / HAL / startup come from cmake/wch_sdk.cmake.
+#  Mouse application sources, grouped as in src/ (kept explicit to match the
+#  vendor build exactly; docs/ excluded). Vendor SDK / HAL / startup come from
+#  cmake/wch_sdk.cmake.
 # -----------------------------------------------------------------------------
 set(APP_SOURCES
     src/main.c
-    src/radio_mode.c
-    src/bat.c
-    src/transport.c
-    src/transport_usb.c
-    src/transport_ble.c
-    src/transport_rf.c
-    src/motor.c
-    src/mouse.c
-    src/paw3395.c
-    src/paw3395_port.c
-    src/bmi270.c
-    src/bmi2.c
-    src/bmi270_port.c
-    src/rgb.c)
+    src/app/radio_mode.c
+    src/app/bat.c
+    src/app/motor.c
+    src/app/mouse.c
+    src/transport/transport.c
+    src/transport/transport_usb.c
+    src/transport/transport_ble.c
+    src/transport/transport_rf.c
+    src/sensor/paw3395.c
+    src/sensor/paw3395_port.c
+    src/sensor/bmi270.c
+    src/sensor/bmi2.c
+    src/sensor/bmi270_port.c
+    src/led/rgb.c
+    src/led/rgb_fx.c)
 
 add_executable(wch-mouse ${APP_SOURCES})
 

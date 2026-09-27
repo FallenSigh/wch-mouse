@@ -8,6 +8,7 @@
 #include "UART.h"
 #include "mouse.h"
 #include "rgb.h"
+#include "rgb_fx.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
 #include "bat.h"
@@ -67,21 +68,6 @@ void bio_reset(void)
 
 static struct paw3395_dev paw;
 static struct bmi2_dev bmi;
-
-/* Radio feedback: solid mode colour for the first second after boot, so a
- * power-up says which link it is running, and a blink of the other mode's
- * colour while the BOOT hold is armed, so a release is predictable. */
-#define RGB_RADIO_BRIGHT        48u
-#define RGB_RADIO_ANNOUNCE_MS   1000u
-
-static void rgb_show_radio(radio_mode_t mode)
-{
-    if (mode == RADIO_MODE_BLE) {
-        rgb_set_all(0, 255, 0);     /* green */
-    } else {
-        rgb_set_all(0, 0, 255);     /* blue  */
-    }
-}
 
 int main() {
     uint8_t len;
@@ -259,47 +245,9 @@ int main() {
             }
         }
 
-        /* RGB underglow: cycle the hue at ~30 Hz, except for the first second
-         * after boot (solid radio-mode colour) and while the BOOT button hold
-         * is armed (blinking the mode a release would switch to). The TIM1+DMA
-         * driver does all the bit timing in hardware, so this loop just edits
-         * the colour buffer and triggers a one-frame DMA refresh. No global
-         * IRQ disable, no impact on USB. */
-        static uint32_t last_rgb_ms = 0;
-        static uint16_t rgb_hue    = 0;
-        if (s_tick_ms - last_rgb_ms >= 33) {
-            last_rgb_ms = s_tick_ms;
-
-            if (s_tick_ms < RGB_RADIO_ANNOUNCE_MS) {
-                rgb_set_brightness(RGB_RADIO_BRIGHT);
-                rgb_show_radio(radio_mode_get());
-            } else if (radio_mode_armed()) {
-                radio_mode_t other = (radio_mode_get() == RADIO_MODE_BLE)
-                                         ? RADIO_MODE_RF : RADIO_MODE_BLE;
-
-                rgb_set_brightness((s_tick_ms & 0x100u) ? RGB_RADIO_BRIGHT
-                                                        : (RGB_RADIO_BRIGHT / 8u));
-                rgb_show_radio(other);
-            } else {
-                uint8_t r, g, b;
-                uint8_t region = (uint8_t)(rgb_hue / 60);
-                uint8_t rem    = (uint8_t)((rgb_hue % 60) * 255U / 60U);
-
-                rgb_set_brightness(1);
-                switch (region) {
-                    case 0: r = 255;     g = rem;       b = 0;   break;
-                    case 1: r = 255 - rem; g = 255;       b = 0;   break;
-                    case 2: r = 0;       g = 255;       b = rem; break;
-                    case 3: r = 0;       g = 255 - rem; b = 255; break;
-                    case 4: r = rem;     g = 0;         b = 255; break;
-                    default: r = 255;    g = 0;         b = 255 - rem; break;
-                }
-                rgb_set_all(r, g, b);
-                rgb_hue = (rgb_hue + 1) % 360;
-            }
-
-            rgb_show();
-        }
+        /* RGB underglow: idle hue cycle, radio-mode announce and the pending
+         * switch preview are all inside rgb_fx. */
+        rgb_fx_poll(s_tick_ms, radio_mode_is(RADIO_MODE_BLE), radio_mode_armed());
     }
 
     return 0;

@@ -45,10 +45,10 @@ set(WCH_PROJECT_FLAGS
 # the HID report descriptor stays the single source of truth for USB and, via
 # src/rf_cfg.h, for the RF link.
 set(WCH_SHARED_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/UART.c
-    ${CMAKE_SOURCE_DIR}/src/ch585_usbhs_device.c
-    ${CMAKE_SOURCE_DIR}/src/log.c
-    ${CMAKE_SOURCE_DIR}/src/usb_desc.c)
+    ${CMAKE_SOURCE_DIR}/src/bsp/UART.c
+    ${CMAKE_SOURCE_DIR}/src/bsp/ch585_usbhs_device.c
+    ${CMAKE_SOURCE_DIR}/src/bsp/log.c
+    ${CMAKE_SOURCE_DIR}/src/bsp/usb_desc.c)
 
 set(WCH_DRIVER_SOURCES
     ${CMAKE_SOURCE_DIR}/StdPeriphDriver/CH58x_adc.c
@@ -123,8 +123,15 @@ function(wch_firmware target flash_suffix)
       ${WCH_DRIVER_SOURCES}
       ${WCH_STARTUP_SOURCES})
 
+  # Headers are included by basename, so every group under src/ goes on the
+  # include path instead of path-qualifying them in the sources.
   target_include_directories(${target} PRIVATE
       ${CMAKE_SOURCE_DIR}/src
+      ${CMAKE_SOURCE_DIR}/src/app
+      ${CMAKE_SOURCE_DIR}/src/bsp
+      ${CMAKE_SOURCE_DIR}/src/led
+      ${CMAKE_SOURCE_DIR}/src/sensor
+      ${CMAKE_SOURCE_DIR}/src/transport
       ${CMAKE_SOURCE_DIR}/StdPeriphDriver/inc
       ${CMAKE_SOURCE_DIR}/RVMSIS)
 

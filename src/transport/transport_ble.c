@@ -1,5 +1,5 @@
 /*
- * src/transport_ble.c - BLE HID mouse transport (HOGP)
+ * src/transport/transport_ble.c - BLE HID mouse transport (HOGP)
  *
  * Implements the `transport_t` interface for the CH585's peripheral BLE
  * stack. The mouse report layout (6 bytes: u8 buttons, i16 dx, i16 dy,

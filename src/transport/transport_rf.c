@@ -1,5 +1,5 @@
 /*
- * src/transport_rf.c - 2.4G proprietary RF transport (device/TX side).
+ * src/transport/transport_rf.c - 2.4G proprietary RF transport (device/TX side).
  *
  * Ported from the WCH RF_Basic example (docs/CH585EVT/EVT/EXAM/BLE/RF_Basic).
  * The mouse is the RF "device" that blasts one MouseReport per millisecond;

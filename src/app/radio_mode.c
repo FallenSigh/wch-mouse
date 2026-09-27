@@ -1,5 +1,5 @@
 /*
- * src/radio_mode.c - which radio transport this boot runs.
+ * src/app/radio_mode.c - which radio transport this boot runs.
  *
  * RF (the dongle link) is preferred; BLE is the fallback for hosts without a
  * receiver. Both run on the same radio and the vendor stack exposes no proven

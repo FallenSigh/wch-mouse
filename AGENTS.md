@@ -32,7 +32,7 @@ cmake --build build --target wch-dongle
 
 ## Layout & boundaries
 
-- `src/` — mouse application code (edit here).
+- `src/` — mouse application code (edit here), grouped by role: `app/` (mouse, radio_mode, bat, motor) · `transport/` (the transport router + USB/BLE/RF backends, plus the shared `rf_cfg.h` on-air contract) · `sensor/` (PAW3395 and the vendored Bosch BMI270/BMI2 API with its ports) · `led/` (WS2812 driver + `rgb_fx` animations) · `bsp/` (vendor-derived USB device/descriptors, UART and logging). Headers are included by basename, so each group sits on the include path rather than being path-qualified in the sources.
 - `dongle/` — the 2.4G receiver dongle firmware: `src/main.c` superloop, `src/rf_dongle.c` RF host (RX) → USB HID.
 - `cmake/wch_sdk.cmake` — source lists, flags and the `wch_firmware*()` helpers shared by both firmwares. Add a driver once, both get it.
 - `StdPeriphDriver/`, `Startup/`, `RVMSIS/`, `Ld/Link.ld` — vendor SDK. Do not edit; formatting is disabled there to preserve WCH style.
