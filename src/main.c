@@ -141,6 +141,14 @@ int main() {
 
     mouse_init(&paw);
 
+    /* The OLED bring-up blocks for a few hundred ms (reset settle plus the
+     * first full-screen flush), so it runs before the USB device layer is up.
+     * Blocking later would starve the SETUP handling the host needs during
+     * enumeration and USB would never take over. */
+    if (oled_init()) {
+        oled_demo();
+    }
+
 #ifdef WCH_BLE_ENABLE
     /* Registering the GAP role must happen before the main loop pumps TMOS:
      * the BLE transport's init (called by transport_router_init below) queues
@@ -162,11 +170,6 @@ int main() {
     PFIC_EnableIRQ(TMR3_IRQn);
 
     rgb_init();
-
-    /* OLED: power the panel, run the SSD1315 bring-up and paint the demo. */
-    if (oled_init()) {
-        oled_demo();
-    }
     paw3395_port_init(&paw);
     paw3395_set_cpi(&paw, 400);
     paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);
