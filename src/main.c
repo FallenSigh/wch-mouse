@@ -12,6 +12,7 @@
 #include "paw3395_port.h"
 #include "bat.h"
 #include "transport.h"
+#include "radio_mode.h"
 
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
 /* Radio stack includes (CMake adds these paths for WCH_BLE_ENABLE/WCH_RF_ENABLE).
@@ -89,16 +90,10 @@ int main() {
 
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
     /* Vendor init order: radio stack, then HAL task registration (which also
-     * brings up the 32K clock for TMOS). The RF transport runs on this same
-     * stack; GAPRole_PeripheralInit is BLE-specific. */
+     * brings up the 32K clock for TMOS). GAPRole_PeripheralInit() is BLE-only
+     * and runs below, once radio_mode_init() has picked this boot's mode. */
     CH58x_BLEInit();
     HAL_Init();
-#ifdef WCH_BLE_ENABLE
-    {
-        bStatus_t s = GAPRole_PeripheralInit();
-        (void)s;
-    }
-#endif
 #endif
 
     GPIOPinRemap(DISABLE, RB_RF_ANT_SW_EN);
@@ -114,6 +109,10 @@ int main() {
 
     log_init(LOG_LEVEL);
     log_set_clock(tick_ms);
+
+    /* Which radio transport this boot runs, loaded from DataFlash. Must be
+     * known before the transports are initialised. */
+    radio_mode_init();
 
 #ifdef WCH_DCDC_ENABLE
     LOG_I("PWR", "dcdc hw0=0x%08X bit13=%u plan=0x%04X enabled=%u",
@@ -139,6 +138,18 @@ int main() {
      * VBUS is present, so it does not burn 10-20 mA on battery. */
 
     mouse_init(&paw);
+
+#ifdef WCH_BLE_ENABLE
+    /* Registering the GAP role must happen before the main loop pumps TMOS:
+     * the BLE transport's init (called by transport_router_init below) queues
+     * the event that starts the peripheral role and advertising. Skipped when
+     * this boot runs the 2.4G RF mode instead. */
+    if (radio_mode_is(RADIO_MODE_BLE)) {
+        bStatus_t s = GAPRole_PeripheralInit();
+        (void)s;
+    }
+#endif
+
     transport_router_init();
 
     /* TIM3 at 1 kHz for the mouse tick. TIM0 is reserved for the RF transport,
@@ -214,6 +225,7 @@ int main() {
 
         mouse_scan(s_tick_ms);
 
+        radio_mode_poll(s_tick_ms);
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);

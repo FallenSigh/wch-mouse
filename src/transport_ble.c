@@ -15,6 +15,7 @@
 
 #include <stddef.h>
 
+#include "radio_mode.h"
 #include "transport.h"
 #include "log.h"
 #include "bat.h"
@@ -362,6 +363,12 @@ static void ble_poll(uint32_t now_ms)
 
 static bool ble_init(void)
 {
+    /* One radio, one live transport: when this boot selected 2.4G RF the BLE
+     * side stays uninitialised and its link_up() never comes up. */
+    if (!radio_mode_is(RADIO_MODE_BLE)) {
+        return false;
+    }
+
     s_bleTaskId  = TMOS_ProcessEventRegister(ble_task_handler);
     s_connHandle = 0xFFFFu;
     s_have_conn  = false;

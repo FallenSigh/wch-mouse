@@ -11,7 +11,20 @@
       "cacheVariables": {
         "WCH_DEBUG_UART": "1",
         "WCH_DCDC_ENABLE": "ON",
-        "WCH_BLE_ENABLE": "OFF",
+        "WCH_BLE_ENABLE": "ON",
+        "WCH_RF_ENABLE": "ON"
+      }
+    },
+    {
+      "name": "tri",
+      "displayName": "WCH CH585 RISC-V (dual radio: 2.4G RF + BLE)",
+      "description": "Both mouse radio transports in one image; the BOOT button picks one at boot (RF preferred)",
+      "binaryDir": "${sourceDir}/build-tri",
+      "toolchainFile": "${sourceDir}/cmake/riscv-wch-toolchain.cmake",
+      "cacheVariables": {
+        "WCH_DEBUG_UART": "1",
+        "WCH_DCDC_ENABLE": "ON",
+        "WCH_BLE_ENABLE": "ON",
         "WCH_RF_ENABLE": "ON"
       }
     }
@@ -20,6 +33,10 @@
     {
       "name": "wch",
       "configurePreset": "wch"
+    },
+    {
+      "name": "tri",
+      "configurePreset": "tri"
     }
   ]
 }

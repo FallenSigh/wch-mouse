@@ -77,8 +77,9 @@ option(WCH_DCDC_ENABLE "Enable the CH585 internal DC-DC (needs the VSW inductor 
 
 # 2.4G proprietary RF transport (mouse = device/TX, dongle = host/RX). It runs
 # on the same vendor radio stack as BLE, so it needs the BLE HAL sources and
-# library; RF and BLE share the radio, so do NOT enable both. Covers the
-# RF_Basic path up to 4k (no RF_8K, which would steal TMR3 and SysTick).
+# library; the radio is single, so RF and BLE cannot both be live. Enabling
+# both options is legal and builds a dual-transport image: src/radio_mode.c
+# then picks one at boot (RF preferred), selectable with the BOOT button.
 option(WCH_RF_ENABLE "Use the 2.4G RF transport instead of BLE (radio is shared)" OFF)
 
 # -----------------------------------------------------------------------------
@@ -87,6 +88,7 @@ option(WCH_RF_ENABLE "Use the 2.4G RF transport instead of BLE (radio is shared)
 # -----------------------------------------------------------------------------
 set(APP_SOURCES
     src/main.c
+    src/radio_mode.c
     src/bat.c
     src/transport.c
     src/transport_usb.c
@@ -110,9 +112,12 @@ if(WCH_DCDC_ENABLE)
 endif()
 
 # transport_ble.c and transport_rf.c are always compiled and compile to an
-# empty stub unless their define selects them, so exactly one radio backend is
-# attached here. USB-only (neither option) leaves the radio stack out entirely.
-if(WCH_BLE_ENABLE)
+# empty stub unless their define selects them, so at most one radio backend is
+# ever live. Both options on builds both and lets src/radio_mode.c choose at
+# boot; USB-only (neither option) leaves the radio stack out entirely.
+if(WCH_BLE_ENABLE AND WCH_RF_ENABLE)
+  wch_firmware_radio(wch-mouse BOTH)
+elseif(WCH_BLE_ENABLE)
   wch_firmware_radio(wch-mouse BLE)
 elseif(WCH_RF_ENABLE)
   wch_firmware_radio(wch-mouse RF)

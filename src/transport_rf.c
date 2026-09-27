@@ -16,6 +16,7 @@
 #ifdef WCH_RF_ENABLE
 
 #include "rf_cfg.h"
+#include "radio_mode.h"
 #include "CH58x_common.h"
 #include "log.h"
 #include "wchrf.h"
@@ -47,6 +48,12 @@ static void rf_process_cb(rfRole_States_t sta, uint8_t id)
 
 static bool rf_init(void)
 {
+    /* One radio, one live transport: when this boot selected BLE the RF side
+     * stays uninitialised and its link_up() never comes up. */
+    if (!radio_mode_is(RADIO_MODE_RF)) {
+        return false;
+    }
+
     rfRoleConfig_t conf = {
         .TxPower     = LL_TX_POWEER_4_DBM,
         .rfProcessCB = rf_process_cb,

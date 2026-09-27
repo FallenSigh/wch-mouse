@@ -195,7 +195,8 @@ endfunction()
 #     BLE   - HOGP profile layer + WCH_BLE_ENABLE
 #     RF    - WCH_RF_ENABLE (mouse over the 2.4G proprietary link)
 #     RADIO - HAL and library only (the dongle, which drives RF itself)
-#  BLE and RF share the radio, so never attach both to one firmware.
+#     BOTH  - both mouse transports in one image; src/radio_mode.c picks one
+#             at boot (the radio is single and cannot run both at once)
 # -----------------------------------------------------------------------------
 function(wch_firmware_radio target transport)
   target_sources(${target} PRIVATE ${WCH_RADIO_SOURCES})
@@ -210,13 +211,15 @@ function(wch_firmware_radio target transport)
   target_link_libraries(${target} PRIVATE
       ${CMAKE_SOURCE_DIR}/ble/LIB/libCH58xBLE_PERI.a)
 
-  if(transport STREQUAL "BLE")
+  if(NOT transport STREQUAL "RF" AND NOT transport STREQUAL "RADIO")
     target_sources(${target} PRIVATE ${WCH_BLE_PROFILE_SOURCES})
     target_include_directories(${target} PRIVATE
         ${CMAKE_SOURCE_DIR}/ble/Profile
         ${CMAKE_SOURCE_DIR}/ble/Profile/include)
     target_compile_definitions(${target} PRIVATE WCH_BLE_ENABLE)
-  elseif(transport STREQUAL "RF")
+  endif()
+
+  if(transport STREQUAL "RF" OR transport STREQUAL "BOTH")
     target_compile_definitions(${target} PRIVATE WCH_RF_ENABLE)
   endif()
 endfunction()
