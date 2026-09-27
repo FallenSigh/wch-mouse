@@ -18,9 +18,20 @@
 #define OLED_EN_PIN         GPIO_Pin_3            /* PB3,  panel rail switch */
 #define OLED_RST_PIN        GPIO_Pin_16           /* PB16, active low        */
 #define OLED_IIC_ADDR       SSD1315_ADDR_SA0_0    /* SA0 low -> write 0x3C   */
+#define OLED_IIC_ADDR_7BIT  0x3Cu                 /* the 7-bit form our bus takes */
 
 #define OLED_WIDTH          128u
 #define OLED_HEIGHT         64u
+#define OLED_PAGES          (OLED_HEIGHT / 8u)
+
+/* Page-addressing commands and the control bytes that frame them. LibDriver
+ * keeps its copies private, but the flush below drives the panel directly so
+ * a page leaves in one I2C transaction instead of 128. */
+#define SSD1315_CTRL_CMD    0x00u
+#define SSD1315_CTRL_DATA   0x40u
+#define SSD1315_CMD_PAGE    0xB0u
+#define SSD1315_CMD_COL_LOW 0x00u
+#define SSD1315_CMD_COL_HIGH 0x10u
 
 static ssd1315_handle_t s_oled;
 static bool             s_ready;
@@ -108,9 +119,15 @@ bool oled_init(void)
                                      SSD1315_CHARGE_PUMP_MODE_7P5V));
     OLED_TRY(ssd1315_set_entire_display(&s_oled, SSD1315_ENTIRE_DISPLAY_OFF));
     OLED_TRY(ssd1315_set_display(&s_oled, SSD1315_DISPLAY_ON));
-    OLED_TRY(ssd1315_clear(&s_oled));
 
     s_ready = true;
+    oled_clear();
+    if (!oled_flush()) {
+        LOG_E("OLED", "first flush failed");
+        s_ready = false;
+        return false;
+    }
+
     LOG_I("OLED", "ssd1315 %ux%u up", (unsigned)OLED_WIDTH, (unsigned)OLED_HEIGHT);
     return true;
 }
@@ -118,13 +135,41 @@ bool oled_init(void)
 void oled_clear(void)
 {
     if (s_ready) {
-        (void)ssd1315_clear(&s_oled);
+        (void)ssd1315_gram_fill_rect(&s_oled, 0u, 0u, OLED_WIDTH - 1u, OLED_HEIGHT - 1u, 0u);
     }
+}
+
+static bool oled_cmd(uint8_t cmd)
+{
+    return i2c_bus_write_reg(OLED_IIC_ADDR_7BIT, SSD1315_CTRL_CMD, &cmd, 1u);
 }
 
 bool oled_flush(void)
 {
-    return s_ready && (ssd1315_gram_update(&s_oled) == 0u);
+    uint8_t row[OLED_WIDTH];
+
+    if (!s_ready) {
+        return false;
+    }
+
+    for (uint8_t page = 0u; page < OLED_PAGES; page++) {
+        if (!oled_cmd(SSD1315_CMD_PAGE | page) || !oled_cmd(SSD1315_CMD_COL_LOW) ||
+            !oled_cmd(SSD1315_CMD_COL_HIGH)) {
+            return false;
+        }
+
+        /* LibDriver stores the gram column-major (gram[x][page]), so gather a
+         * page into a row buffer to send it as one transfer. */
+        for (uint8_t x = 0u; x < OLED_WIDTH; x++) {
+            row[x] = s_oled.gram[x][page];
+        }
+
+        if (!i2c_bus_write_reg(OLED_IIC_ADDR_7BIT, SSD1315_CTRL_DATA, row, OLED_WIDTH)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool oled_text(uint8_t x, uint8_t y, const char *str)
