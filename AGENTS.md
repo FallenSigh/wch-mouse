@@ -13,8 +13,9 @@ cmake --build build --target wch-mouse     # or just one
 cmake --build build --target wch-dongle
 ```
 
-- The `wch` preset selects the **RF mouse** (`WCH_BLE_ENABLE=OFF`, `WCH_RF_ENABLE=ON`); the dongle is always RF.
-- The mouse's variant (USB-only / BLE / RF) is a cache option, so build a second variant through its own build dir, e.g. `cmake -B /tmp/ble -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/riscv-wch-toolchain.cmake -DWCH_BLE_ENABLE=ON`.
+- Two presets for the mouse: `wch` = **RF** (`WCH_RF_ENABLE=ON`) and `tri` = **dual radio** (`WCH_BLE_ENABLE=ON` + `WCH_RF_ENABLE=ON`, output `build-tri/`). The dongle is always RF.
+- A preset's `cacheVariables` only apply when its build dir is **created**; an already-configured dir keeps its own cache and `cmake --preset` will not change it (see the cache trap below). Pass `-D` explicitly to re-target an existing dir.
+- The mouse's variant (USB-only / BLE / RF / dual) is a cache option, so build another variant through its own build dir, e.g. `cmake -B /tmp/ble -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/riscv-wch-toolchain.cmake -DWCH_BLE_ENABLE=ON`.
 - Toolchain discovery order: `$WCH_TOOLCHAIN_ROOT` -> `/opt/wch/riscv-wch-gcc15` -> `~/MounRiver/...`. Override with `-DWCH_TOOLCHAIN_ROOT=/path`.
 - `compile_commands.json` is a **symlink to `build/`** and `.clangd` reads `build/`; run the configure step before expecting LSP/clangd to work on `src/`.
 - Flashing uses external tools and is **not** part of the default build. The mouse owns the unsuffixed names, the dongle's are suffixed `-dongle`:
@@ -45,6 +46,7 @@ cmake --build build --target wch-dongle
 - Entry point: `src/main.c` bare-metal superloop.
 - **Transport router** (`src/transport.c`/`.h`): an array of `transport_t` backends; the first whose `link_up()` is true wins, order USB > RF > BLE. Backends: `transport_usb.c`, `transport_rf.c` (`WCH_RF_ENABLE`), `transport_ble.c` (`WCH_BLE_ENABLE`); both radio files always compile and stub out when their define is absent. Add new backends to `s_backends[]`.
 - **2.4G RF link**: `src/rf_cfg.h` is the contract shared by both firmwares — mouse = device/TX (`src/transport_rf.c`), dongle = host/RX (`dongle/src/rf_dongle.c`). The RFIP `rfPackage_t.length` byte is the **total frame length including the 4-byte header**, not the payload length; treating it as the payload sends a truncated frame whose tail the receiver reads as stale DMA memory.
+- **Radio mode** (`src/radio_mode.c`): the CH585 has one radio, so the mouse runs RF **or** BLE and picks at **boot** — not live (`RFRole_SwitchMode` exists but has no example and needs an idle radio). The mode lives in DataFlash at `0x00070000` and defaults to RF. **Long-press the BOOT strap (PB22) for 3 s, then release** to store the other mode and `SYS_ResetExecute()` into it. USB is independent of the mode and always wins the transport router.
 - **Mouse report**: 6-byte packed `MouseReport_t` (`src/mouse.h`), shared byte-identically by USB and BLE. The layout is duplicated in the USB HID descriptor (`src/usb_desc.c`, `MyMouseReportDesc`) and the BLE report map (`ble/Profile/hidmouseservice.c`) — keep both in sync. Note the stale `4-byte report` comment in `usb_desc.c`: dx/dy are actually 16-bit.
 - Sensors: PAW3395 (SPI) in `paw3395.c`; BMI270 via the vendored Bosch BMI2 API (`bmi270.c`/`bmi2.c`). Pin assignments: `docs/io.csv`.
 - Logging: `src/log.c` non-blocking ring over UART1; use `LOG_E/W/I/D(tag, ...)`. `LOG_LEVEL` strips higher-verbosity messages at preprocess time. `log_printf` blocks on the UART FIFO — thread context only, never from an ISR.
@@ -58,6 +60,8 @@ cmake --build build --target wch-dongle
 - BLE HID only reports over a **bonded, encrypted** link: `HidDev_Report()` gates on `hidDevConnSecure` and the report CCCD is `GATT_PERMIT_ENCRYPT_WRITE`, so the host must pair first. On Linux BlueZ, `bluetoothctl connect` alone is not enough — run `agent on` / `default-agent`, then `pair`, then `trust`. We use `GAPBOND_PAIRING_MODE_INITIATE` and a static device address (`GAP_ConfigDeviceAddr(ADDRTYPE_STATIC, ...)`) so the peripheral drives pairing and the host keeps recognising its bond across reboots.
 - Duplicate IRQ symbols are expected: the PERI library provides strong `Ecall_M/U_Mode_Handler` / `LLE_IRQHandler`, while `Startup/startup_CH585.S` declares weak stubs that the library overrides.
 - RF TX buffer: `RFIP_SetTxParm()` hands the DMA a pointer and returns, so the buffer it points at must not be mutated afterwards. `transport_rf.c` therefore keeps the motion accumulator (`s_acc`) separate from the DMA buffer (`s_tx`) — merging them corrupts the packet mid-flight.
+- A single-radio build deliberately ignores the DataFlash mode byte (`RADIO_MODE_SELECTABLE`): a stale value written by a dual-radio image must not disable the only backend an RF-only or BLE-only image carries. For the same hardware reason, release — don't hold — PB22 when the mode switch resets: a low BOOT strap at reset enters the ISP bootloader instead of the app.
+- `EEPROM_READ/WRITE/ERASE` address the DataFlash by **offset** (0 = `0x00070000`), not by the absolute address the memory map shows; passing the absolute address makes the ROM reject the whole command (`EVT/EXAM/FLASH` writes at offset 0). `src/radio_mode.c` stores its record at offset `0x0000` — the vendor's BLE SNV is at `0x7000` and the IAP image flag at `0x6000`, so they do not collide. Buffers must be RAM, 4-byte aligned.
 
 ## Style
 
