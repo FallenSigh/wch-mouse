@@ -7,6 +7,7 @@
 #include "mouse.h"
 #include "air_mouse.h"
 #include "motor.h"
+#include "bio.h"
 #include "rgb.h"
 #include "rgb_fx.h"
 #include "oled.h"
@@ -55,18 +56,6 @@ static uint32_t tick_ms(void) {
     return s_tick_ms;
 }
 
-#define BIO_RST_PIN          GPIO_Pin_11
-#define BIO_RST_ACTIVE_LOW   1
-
-void bio_reset(void)
-{
-    GPIOA_ModeCfg(BIO_RST_PIN, GPIO_ModeOut_PP_5mA);
-    GPIOA_ResetBits(BIO_RST_PIN);   /* assert reset  */
-    mDelaymS(20);
-    GPIOA_SetBits(BIO_RST_PIN);     /* release reset */
-    mDelaymS(100);                  /* module boot time */
-}
-
 static struct paw3395_dev paw;
 static struct bmi2_dev bmi;
 
@@ -100,7 +89,8 @@ int main() {
 
     GPIOPinRemap(DISABLE, RB_RF_ANT_SW_EN);
 
-    /* Release the BIO module from reset before expecting its UART traffic. */
+    /* Bring the BIO module up before expecting its UART traffic. */
+    bio_init();
     bio_reset();
 
     // init uart1
@@ -131,10 +121,13 @@ int main() {
     /* Usart3 init */
     UART3_Init( 1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY  );
 
-    /* UART3 feeds the BIO module's USB CDC bridge. With no host attached its
-     * receive interrupt would fire once per incoming byte and accumulate data
-     * nobody can read, so keep it off until USB comes up. */
-    UART3_INTCfg(DISABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
+    /* UART3 receives the BIO module's real-time packets. Receive stays enabled
+     * even without a host because bio_rt_feed() parses them locally for the
+     * OLED; only the USB CDC forwarding below is gated on USB. */
+
+    /* Start acquisition so the module streams real-time packets. Safe here:
+     * UART3 is up and bio_reset() has already let the module boot. */
+    bio_measure_enable();
 
     /* The USBHS PHY is now owned by transport_usb: it powers up only while
      * VBUS is present, so it does not burn 10-20 mA on battery. */
@@ -202,7 +195,6 @@ int main() {
 
     LOG_I("MAIN", "init done");
 
-    bool bio_host = false;
     while(1) {
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
         /* TMOS tick is 625 us and MUST be pumped from main-loop context;
@@ -210,29 +202,16 @@ int main() {
         TMOS_SystemProcess();
 #endif
 
-        /* UART3 <-> USB CDC bridge: it only has a consumer while a USB host
-         * is really attached, and it pokes USB endpoint registers, so skip
-         * both halves unless USB is the active link. The BIO module's receive
-         * interrupt is gated with it. */
-        {
-            const bool usb_host = (transport_router_active() == TR_USB);
-
-            if (usb_host != bio_host) {
-                bio_host = usb_host;
-                if (usb_host) {
-                    UART3_INTCfg(ENABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
-                } else {
-                    UART3_INTCfg(DISABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
-                    CDC.Uart_RecLen    = 0;   /* drop data buffered with no host */
-                    CDC.Uart_Input_Ptr = 0;
-                    CDC.Uart_Output_Ptr = 0;
-                }
-            }
-
-            if (usb_host) {
-                UART3_DataRx_Deal();
-                UART3_DataTx_Deal();
-            }
+        /* UART3 <-> USB CDC bridge. The BIO real-time packets are parsed
+         * locally in the UART3 ISR, so the ring only matters to a host: drain
+         * it when USB owns the link, otherwise drop it so it cannot overflow. */
+        if (transport_router_active() == TR_USB) {
+            UART3_DataRx_Deal();
+            UART3_DataTx_Deal();
+        } else {
+            CDC.Uart_RecLen     = 0;
+            CDC.Uart_Input_Ptr  = 0;
+            CDC.Uart_Output_Ptr = 0;
         }
 
         mouse_scan(s_tick_ms);
@@ -241,6 +220,23 @@ int main() {
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
+
+        /* BIO real-time screen: refresh only on a fresh packet (~1.28 s) and
+         * only when it carries a real measurement, so the panel keeps showing
+         * the last valid reading instead of a "no contact" packet. */
+        {
+            static uint32_t last_rt_seq;
+            const uint32_t  rt_seq = bio_rt_seq();
+
+            if (rt_seq != last_rt_seq) {
+                bio_rt_pack_t pkt;
+
+                last_rt_seq = rt_seq;
+                if (bio_rt_read(&pkt) && bio_rt_pack_valid(&pkt)) {
+                    oled_bio_show(pkt.heartrate, pkt.spo2, pkt.bk, pkt.sdnn);
+                }
+            }
+        }
 
         /* RGB underglow: idle hue cycle, radio-mode announce and the pending
          * switch preview are all inside rgb_fx. */

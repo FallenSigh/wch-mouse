@@ -11,6 +11,7 @@
 *******************************************************************************/
 
 #include "UART.h"
+#include "bio.h"
 #include "ch585_usbhs_device.h"
 
 /*******************************************************************************/
@@ -215,6 +216,13 @@ void TMR2_IRQHandler( void )
     }
 }
 
+/* Weak default so the dongle build, which shares this file but carries no BIO
+ * module, still links; the mouse's bio.c provides the real implementation. */
+__attribute__((weak)) void bio_rt_feed(uint8_t byte)
+{
+    (void)byte;
+}
+
 /*******************************************************************************
  * @fn        UART2_IRQHandler
  *
@@ -232,17 +240,20 @@ void UART3_IRQHandler(void)
     switch( UART3_GetITFlag() )
     {
         case UART_II_LINE_STAT:         //Line status error
-            printf("error:%x\n",R8_UART3_LSR);
+            (void)R8_UART3_LSR;         //RZ: reading clears the error flags (not logged)
             break;
 
         case UART_II_RECV_RDY:          //Data reaches the trigger point
             for(rec_length = 0; rec_length < 7; rec_length++)
             {
-                UART3_Rx_Buf[CDC.Uart_Input_Ptr++] = UART3_RecvByte();
+                uint8_t rxbyte = UART3_RecvByte();
+
+                UART3_Rx_Buf[CDC.Uart_Input_Ptr++] = rxbyte;
                 if(CDC.Uart_Input_Ptr >= UART_REV_BUFFLEN )
                 {
                     CDC.Uart_Input_Ptr = 0;
                 }
+                bio_rt_feed(rxbyte);
             }
             CDC.Uart_RecLen += rec_length;
             CDC.Uart_Timeout_Count = 0;
@@ -257,6 +268,7 @@ void UART3_IRQHandler(void)
                 {
                     CDC.Uart_Input_Ptr = 0;
                 }
+                bio_rt_feed(recbuff[i]);
             }
             CDC.Uart_RecLen += i;
             CDC.Uart_Timeout_Count = 0;

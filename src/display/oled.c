@@ -9,6 +9,8 @@
 
 #include "oled.h"
 
+#include <stdio.h>
+
 #include "CH58x_common.h"
 #include "driver_ssd1315.h"
 #include "driver_ssd1315_interface.h"
@@ -208,4 +210,44 @@ void oled_demo(void)
     (void)ssd1315_gram_write_string(&s_oled, 2u, 8u, (char *)"SSD1315", 7u, 1u, SSD1315_FONT_16);
     (void)ssd1315_gram_write_string(&s_oled, 2u, 32u, (char *)"128x64 OK", 9u, 1u, SSD1315_FONT_16);
     (void)ssd1315_gram_update(&s_oled);
+}
+
+/* The 16 px font only fits three lines on a 64 px panel: the driver rejects a
+ * 16 px start past y=47 and wraps it to (0,0). The four-line screen therefore
+ * uses FONT_12. */
+static bool oled_text_small(uint8_t x, uint8_t y, const char *str)
+{
+    uint16_t len = 0u;
+
+    while ((str != NULL) && (str[len] != '\0')) {
+        len++;
+    }
+
+    if (!s_ready || (len == 0u)) {
+        return false;
+    }
+
+    return ssd1315_gram_write_string(&s_oled, x, y, (char *)str, len, 1u, SSD1315_FONT_12) == 0u;
+}
+
+bool oled_bio_show(uint8_t heartrate, uint8_t spo2, uint8_t bk, uint8_t hrv)
+{
+    char line[20];
+
+    if (!s_ready) {
+        return false;
+    }
+
+    oled_clear();
+
+    (void)snprintf(line, sizeof(line), "HR %u", (unsigned)heartrate);
+    (void)oled_text_small(2u, 0u, line);
+    (void)snprintf(line, sizeof(line), "SpO2 %u%%", (unsigned)spo2);
+    (void)oled_text_small(2u, 16u, line);
+    (void)snprintf(line, sizeof(line), "BK %u", (unsigned)bk);
+    (void)oled_text_small(2u, 32u, line);
+    (void)snprintf(line, sizeof(line), "HRV %u", (unsigned)hrv);
+    (void)oled_text_small(2u, 48u, line);
+
+    return oled_flush();
 }

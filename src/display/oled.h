@@ -19,4 +19,8 @@ bool oled_fill(uint8_t left, uint8_t top, uint8_t right, uint8_t bottom, bool on
 /* Border plus text, to prove the gram maps onto the panel. */
 void oled_demo(void);
 
+/* Four-line health screen from the latest BIO real-time packet: heart rate,
+ * SpO2, microcirculation and HRV (sdnn). Redraws and flushes the panel. */
+bool oled_bio_show(uint8_t heartrate, uint8_t spo2, uint8_t bk, uint8_t hrv);
+
 #endif /* __OLED_H__ */
