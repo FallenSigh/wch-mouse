@@ -15,14 +15,14 @@
 #include "CH58x_common.h"
 #include "log.h"
 
-/* 50 kHz, not 400: this bus currently has no external pull-ups, so it relies
- * on the CH585's internal ~20-50 kOhm ones. With a typical bus capacitance
- * that puts the rise time near 9 us, which even 100 kHz only just fits. Drop
- * 400 kHz back in once the board has 4.7 kOhm pull-ups on SDA/SCL. */
-#define I2C_CLOCK_HZ     50000u
+/* 400 kHz fast mode: SDA/SCL carry external 4.7 kOhm pull-ups to 3.3 V, so
+ * the rise time is short enough. A board without them only has the CH585's
+ * internal 20-50 kOhm, whose ~9 us rise time barely fits even 100 kHz - drop
+ * I2C_CLOCK_HZ and raise I2C_RETRIES there. */
+#define I2C_CLOCK_HZ     400000u
 #define I2C_OWN_ADDR     0x42u
 #define I2C_SPIN_LIMIT   200000u   /* bounded polls; a few ms worst case */
-#define I2C_RETRIES      3u        /* weak pull-ups make transfers flaky */
+#define I2C_RETRIES      1u        /* pull-ups fitted: no retries expected */
 
 #define I2C_7BIT_MAX     0x7Fu
 
