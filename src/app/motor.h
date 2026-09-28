@@ -3,18 +3,18 @@
  * Author             : wch-mouse
  * Version            : V1.0.0
  * Date               : 2026/09/16
- * Description        : LRA (linear resonant actuator) haptic driver on PB0.
- *                     See docs/io.csv "MOTOR". The MCU produces a single PWM
- *                     channel; the off-board driver IC converts it into the
- *                     h-bridge drive the LRA needs.
+ * Description        : ERM vibration motor switch on PB0. See docs/io.csv
+ *                     "MOTOR". PB0 drives the gate of a MOSFET that switches
+ *                     the motor supply, so the pin is a plain on/off control,
+ *                     not a PWM amplitude input.
  *
- *                     This peripheral is driven by the chip's PWMx controller
- *                     (independent of the general-purpose TIMs), with PWM6
- *                     hard-wired to PB0 -- no remap required.
- *
- *                     Frequency: LRA resonance is mechanical (typically
- *                     150-280 Hz). Override MOTOR_FREQ_HZ if this board's LRA
- *                     needs a different drive frequency.
+ *                     The motor is a cylindrical DC (ERM) type - on this board
+ *                     a Z3OC1T8219731: 2.7 V rated, 2.3-3.2 V usable, start
+ *                     voltage <= 2.3 V, ~85 mA. It needs close to full supply
+ *                     to start, so a chopped duty only twitches it and the
+ *                     feedback intensity must come from on-time (duration or
+ *                     pulses), never from a duty cycle. Do not reintroduce a
+ *                     PWM here.
  *********************************************************************************/
 #ifndef __MOTOR_H__
 #define __MOTOR_H__
@@ -25,17 +25,14 @@
 extern "C" {
 #endif
 
+/* Configure PB0 as the switch output, motor off. */
 void motor_init(void);
 
-/* 0 = silent, 100 = full amplitude. Anything in between is the percentage
- * of the configured PWM period the LRA drive is active. Persists until the
- * next call. */
-void motor_set(uint8_t pct);
+/* MOSFET on: full drive. */
+void motor_on(void);
 
-/* Coast to silence (duty = 0). Most LRA driver ICs treat open as
- * "high-impedance" and let the actuator free-wheel; if this board needs a
- * hard low for brake, swap the duty=0 write inside for a GPIO reset. */
-void motor_brake(void);
+/* MOSFET off: the motor free-wheels to a stop. */
+void motor_off(void);
 
 #ifdef __cplusplus
 }

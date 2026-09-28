@@ -81,9 +81,9 @@ static int32_t s_frac_y;
 
 static uint32_t s_haptic_until;
 
-static void air_mouse_haptic(uint32_t now_ms, uint8_t pct, uint32_t ms)
+static void air_mouse_haptic(uint32_t now_ms, uint32_t ms)
 {
-    motor_set(pct);
+    motor_on();
     s_haptic_until = now_ms + ms;
 }
 
@@ -111,6 +111,12 @@ static void air_mouse_gyro_on(void)
 
 static void air_mouse_enter(uint32_t now_ms)
 {
+    /* Fire the feedback first: the deadline is now_ms + duration, and the
+     * hand-off below can block, so starting it here keeps the buzz full length.
+     * The motor is on/off only, so entry and exit differ by length, and the
+     * ERM needs a long enough burst to spin up and be felt. */
+    air_mouse_haptic(now_ms, 250u);
+
     /* Hand the cursor over: optical sensor down, gyro up, then start measuring
      * the zero-rate bias before any motion is reported. The optical sensor's
      * IRQ-driven read is parked first so its blocking shutdown write cannot
@@ -129,12 +135,15 @@ static void air_mouse_enter(uint32_t now_ms)
 
     LOG_I("AIR", "enter: paw off, gyro on, calibrating %u samples",
           (unsigned)AIR_MOUSE_CALIB_SAMPLES);
-    air_mouse_haptic(now_ms, 70u, 80u);
 }
 
 static void air_mouse_exit(uint32_t now_ms)
 {
     uint8_t gyr = BMI2_GYRO;
+
+    /* Fire the feedback first: the optical bring-up below blocks for tens of ms
+     * and would otherwise eat most of the buzz. Longer than enter()'s. */
+    air_mouse_haptic(now_ms, 400u);
 
     /* IMU suspended: nothing reads the gyro until the next entry. */
     if (bmi270_sensor_disable(&gyr, 1, s_cfg.bmi) != BMI2_OK) {
@@ -153,7 +162,6 @@ static void air_mouse_exit(uint32_t now_ms)
     s_calib_left = 0;
 
     LOG_I("AIR", "exit: gyro suspended, paw re-init cpi=%u", (unsigned)s_cfg.cpi);
-    air_mouse_haptic(now_ms, 35u, 120u);
 }
 
 void air_mouse_init(const air_mouse_cfg_t *cfg)
@@ -200,10 +208,10 @@ void air_mouse_poll(uint32_t now_ms, uint8_t buttons)
         }
     }
 
-    /* Non-blocking haptic pulse: brake once the window has elapsed. */
+    /* Non-blocking haptic pulse: switch off once the window has elapsed. */
     if (s_haptic_until != 0u && (int32_t)(now_ms - s_haptic_until) >= 0) {
         s_haptic_until = 0u;
-        motor_brake();
+        motor_off();
     }
 }
 
