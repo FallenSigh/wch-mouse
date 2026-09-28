@@ -1,7 +1,5 @@
 #include "CH58x_common.h"
 #include "log.h"
-#include "bmi2.h"
-#include "bmi270.h"
 #include "bmi270_port.h"
 #include "bmi2_defs.h"
 #include "ch585_usbhs_device.h"
@@ -179,25 +177,14 @@ int main() {
     paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
     bat_init();
 
+    /* The IMU is only needed for air-mouse mode, so it stays with both sensors
+     * disabled here: air_mouse enables the gyroscope on entry and the exit path
+     * disables it again, leaving the IMU idle in normal use. bmi270_init() only
+     * loads the config, it does not enable a sensor. */
     if (bmi270_port_init(&bmi) != BMI2_OK) {
         LOG_E("BMI270", "init failed");
     } else {
-        LOG_I("BMI270", "init done");
-    }
-
-    struct bmi2_sens_config cfg = { 0 };
-    cfg.type                = BMI2_ACCEL;
-    cfg.cfg.acc.odr         = BMI2_ACC_ODR_100HZ;    /* 100 Hz          */
-    cfg.cfg.acc.bwp         = BMI2_ACC_NORMAL_AVG4;
-    cfg.cfg.acc.filter_perf = BMI2_PERF_OPT_MODE;
-    cfg.cfg.acc.range       = BMI2_ACC_RANGE_8G;      /* ±8g → 4096 LSB/g */
-    if (bmi2_set_sensor_config(&cfg, 1, &bmi) != BMI2_OK) {
-        LOG_W("BMI270", "set config failed");
-    } 
-
-    uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_GYRO };
-    if (bmi270_sensor_enable(sens_list, 2, &bmi) != BMI2_OK) {
-        LOG_W("BMI270", "sensor enable failed");
+        LOG_I("BMI270", "init done (sensors off)");
     }
 
     /* Air-mouse mode: side-1 + side-2 toggle the cursor between the optical
@@ -206,7 +193,7 @@ int main() {
     const air_mouse_cfg_t air_cfg = {
         .paw  = &paw,
         .bmi  = &bmi,
-        .cpi  = 400,
+        .cpi  = 800,
         .mode = PAW3395_MODE_HIGH_PERFORMANCE,
         .lift = PAW3395_LIFT_CUT_2MM,
     };
@@ -214,7 +201,6 @@ int main() {
 
     LOG_I("MAIN", "init done");
 
-    uint8_t data[12];
     bool bio_host = false;
     while(1) {
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
@@ -254,22 +240,6 @@ int main() {
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
-
-        /* IMU snapshot every 5 s: accel in raw counts and mg (±8g: 4096 LSB/g),
-         * gyro in raw counts (±2000 dps default: 16.4 LSB/dps). Held off while
-         * air-mouse mode is active so it cannot steal a data-ready sample from
-         * the motion path. */
-        static uint32_t last_imu_ms = 0;
-        if (!air_mouse_active() && s_tick_ms - last_imu_ms >= 5000) {
-            last_imu_ms = s_tick_ms;
-            struct bmi2_sens_data d;
-            if (bmi2_get_sensor_data(&d, &bmi) == BMI2_OK) {
-                LOG_I("BMI270", "acc=(%d,%d,%d) mg=(%d,%d,%d) gyr=(%d,%d,%d)",
-                      d.acc.x, d.acc.y, d.acc.z,
-                      d.acc.x * 1000 / 4096, d.acc.y * 1000 / 4096, d.acc.z * 1000 / 4096,
-                      d.gyr.x, d.gyr.y, d.gyr.z);
-            }
-        }
 
         /* RGB underglow: idle hue cycle, radio-mode announce and the pending
          * switch preview are all inside rgb_fx. */
