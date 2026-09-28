@@ -1,5 +1,6 @@
 #include "mouse.h"
 #include "CH58x_common.h"
+#include "air_mouse.h"
 #include "transport.h"
 #include "paw3395.h"
 #include "log.h"
@@ -117,19 +118,37 @@ void mouse_scan(uint32_t now_ms)
         s_btn_match = 0;
     }
 
-    uint8_t buf[12];
-    paw3395_burst(s_sensor, buf);
+    uint8_t buttons = s_btn_stable;
 
-    int16_t dx = (int16_t)(buf[2] | (buf[3] << 8));
-    int16_t dy = (int16_t)(buf[4] | (buf[5] << 8));
-    int8_t  wheel = encoder_update(pins);
+    /* Air-mouse mode owns the side-1 + side-2 combo it toggles on, so swallow
+     * those bits while it is held rather than clicking back/forward. */
+    air_mouse_poll(now_ms, buttons);
+    if (air_mouse_combo_held()) {
+        buttons &= (uint8_t)~(HID_BTN_BACK | HID_BTN_FWD);
+    }
+
+    int16_t dx = 0;
+    int16_t dy = 0;
+
+    if (air_mouse_active()) {
+        /* Gyro drives the cursor (already HID-sense). */
+        air_mouse_read_motion(&dx, &dy);
+    } else {
+        uint8_t buf[12];
+
+        paw3395_burst(s_sensor, buf);
+        dx = (int16_t)-(int16_t)(buf[2] | (buf[3] << 8));
+        dy = (int16_t)-(int16_t)(buf[4] | (buf[5] << 8));
+    }
+
+    int8_t wheel = encoder_update(pins);
 
     /* Send when the buttons changed, the wheel turned, or we have motion. */
     if (button_changed || dx != 0 || dy != 0 || wheel != 0) {
         MouseReport_t rpt = {
-            .buttons = s_btn_stable,
-            .dx      = -dx,
-            .dy      = -dy,
+            .buttons = buttons,
+            .dx      = dx,
+            .dy      = dy,
             .wheel   = wheel
         };
 

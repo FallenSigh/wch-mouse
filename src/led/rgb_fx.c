@@ -1,10 +1,11 @@
 /*
  * src/led/rgb_fx.c - animation layer over the WS2812 driver (rgb.c).
  *
- * Owns the three things the underglow can show: the idle hue cycle, the
- * boot announcement of the active radio mode, and the preview blink while the
- * BOOT hold is armed. The driver does all the bit timing in hardware, so this
- * only edits the colour buffer and triggers a one-frame DMA refresh.
+ * Owns the things the underglow can show: the idle hue cycle, the boot
+ * announcement of the active radio mode, the solid air-mouse colour and the
+ * preview blink while the BOOT hold is armed. The driver does all the bit
+ * timing in hardware, so this only edits the colour buffer and triggers a
+ * one-frame DMA refresh.
  */
 
 #include "rgb_fx.h"
@@ -35,6 +36,11 @@ static void rgb_fx_mode_colour(bool ble)
     }
 }
 
+static void rgb_fx_air_colour(void)
+{
+    rgb_set_all(255, 0, 255);       /* magenta: gyro owns the cursor */
+}
+
 static void rgb_fx_hue(uint16_t hue)
 {
     uint8_t region = (uint8_t)(hue / 60u);
@@ -55,7 +61,7 @@ static void rgb_fx_hue(uint16_t hue)
     rgb_set_all(r, g, b);
 }
 
-void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed)
+void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
 {
     if (!s_started) {
         s_started = true;
@@ -71,6 +77,9 @@ void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed)
     if (now_ms - s_base_ms < RGB_FX_ANNOUNCE_MS) {
         rgb_set_brightness(RGB_FX_BRIGHT);
         rgb_fx_mode_colour(ble);
+    } else if (air_mouse) {
+        rgb_set_brightness(RGB_FX_BRIGHT);
+        rgb_fx_air_colour();
     } else if (switch_armed) {
         rgb_set_brightness((now_ms & RGB_FX_BLINK_MASK) ? RGB_FX_BRIGHT
                                                         : (RGB_FX_BRIGHT / 8u));

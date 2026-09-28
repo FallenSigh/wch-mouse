@@ -7,6 +7,8 @@
 #include "ch585_usbhs_device.h"
 #include "UART.h"
 #include "mouse.h"
+#include "air_mouse.h"
+#include "motor.h"
 #include "rgb.h"
 #include "rgb_fx.h"
 #include "oled.h"
@@ -170,8 +172,9 @@ int main() {
     PFIC_EnableIRQ(TMR3_IRQn);
 
     rgb_init();
+    motor_init();
     paw3395_port_init(&paw);
-    paw3395_set_cpi(&paw, 400);
+    paw3395_set_cpi(&paw, 800);
     paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);
     paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
     bat_init();
@@ -196,6 +199,18 @@ int main() {
     if (bmi270_sensor_enable(sens_list, 2, &bmi) != BMI2_OK) {
         LOG_W("BMI270", "sensor enable failed");
     }
+
+    /* Air-mouse mode: side-1 + side-2 toggle the cursor between the optical
+     * sensor and the gyro. It re-applies this boot's optical geometry after
+     * its own paw3395_init(), so hand it the same values used above. */
+    const air_mouse_cfg_t air_cfg = {
+        .paw  = &paw,
+        .bmi  = &bmi,
+        .cpi  = 400,
+        .mode = PAW3395_MODE_HIGH_PERFORMANCE,
+        .lift = PAW3395_LIFT_CUT_2MM,
+    };
+    air_mouse_init(&air_cfg);
 
     LOG_I("MAIN", "init done");
 
@@ -241,9 +256,11 @@ int main() {
         bat_poll(s_tick_ms);
 
         /* IMU snapshot every 5 s: accel in raw counts and mg (±8g: 4096 LSB/g),
-         * gyro in raw counts (±2000 dps default: 16.4 LSB/dps). */
+         * gyro in raw counts (±2000 dps default: 16.4 LSB/dps). Held off while
+         * air-mouse mode is active so it cannot steal a data-ready sample from
+         * the motion path. */
         static uint32_t last_imu_ms = 0;
-        if (s_tick_ms - last_imu_ms >= 5000) {
+        if (!air_mouse_active() && s_tick_ms - last_imu_ms >= 5000) {
             last_imu_ms = s_tick_ms;
             struct bmi2_sens_data d;
             if (bmi2_get_sensor_data(&d, &bmi) == BMI2_OK) {
@@ -256,7 +273,8 @@ int main() {
 
         /* RGB underglow: idle hue cycle, radio-mode announce and the pending
          * switch preview are all inside rgb_fx. */
-        rgb_fx_poll(s_tick_ms, radio_mode_is(RADIO_MODE_BLE), radio_mode_armed());
+        rgb_fx_poll(s_tick_ms, radio_mode_is(RADIO_MODE_BLE), radio_mode_armed(),
+                    air_mouse_active());
         rgb_poll(s_tick_ms);
     }
 
