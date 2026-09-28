@@ -87,7 +87,7 @@ int main() {
     PWR_DCDCCfg(ENABLE);
 #endif
 
-    HSECFG_Capacitance(HSECap_12p);
+    HSECFG_Capacitance(HSECap_2p);
     SetSysClock(SYSCLK_FREQ);
 
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
@@ -175,6 +175,7 @@ int main() {
     paw3395_set_cpi(&paw, 800);
     paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);
     paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
+    paw3395_motion_start();
     bat_init();
 
     /* The IMU is only needed for air-mouse mode, so it stays with both sensors

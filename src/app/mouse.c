@@ -3,6 +3,7 @@
 #include "air_mouse.h"
 #include "transport.h"
 #include "paw3395.h"
+#include "paw3395_port.h"
 #include "log.h"
 
 #define BTN_LEFT_PIN      GPIO_Pin_7     // PB7   PR_SW1
@@ -134,11 +135,12 @@ void mouse_scan(uint32_t now_ms)
         /* Gyro drives the cursor (already HID-sense). */
         air_mouse_read_motion(&dx, &dy);
     } else {
-        uint8_t buf[12];
+        int16_t mx;
+        int16_t my;
 
-        paw3395_burst(s_sensor, buf);
-        dx = (int16_t)-(int16_t)(buf[2] | (buf[3] << 8));
-        dy = (int16_t)-(int16_t)(buf[4] | (buf[5] << 8));
+        paw3395_motion_read(&mx, &my);
+        dx = (int16_t)-mx;
+        dy = (int16_t)-my;
     }
 
     int8_t wheel = encoder_update(pins);

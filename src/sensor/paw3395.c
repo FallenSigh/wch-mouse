@@ -20,7 +20,6 @@
 #define REG_DELTA_X_H      0x04u
 #define REG_DELTA_Y_L      0x05u
 #define REG_DELTA_Y_H      0x06u
-#define REG_MOTION_BURST   0x16u
 #define REG_POWER_UP_RESET 0x3Au
 #define REG_SHUTDOWN       0x3Bu
 #define REG_SET_RESOLUTION 0x47u
@@ -32,7 +31,6 @@
 
 #define CPI_MIN     50u
 #define CPI_MAX     26000u
-#define BURST_LEN   12u
 
 static void paw3395_write_reg(struct paw3395_dev *dev, uint8_t reg, uint8_t val) {
     dev->write(reg, &val, 1u);
@@ -368,7 +366,12 @@ void paw3395_set_lift_cut(struct paw3395_dev *dev, enum paw3395_lift_cut cut) {
 }
 
 void paw3395_burst(struct paw3395_dev *dev, uint8_t *buf) {
-	dev->read(REG_MOTION_BURST, buf, BURST_LEN);
+	dev->read(PAW3395_MOTION_BURST_REG, buf, PAW3395_MOTION_BURST_LEN);
+}
+
+void paw3395_parse_burst(const uint8_t *buf, int16_t *dx, int16_t *dy) {
+	*dx = (int16_t)((uint16_t)buf[2] | ((uint16_t)buf[3] << 8));
+	*dy = (int16_t)((uint16_t)buf[4] | ((uint16_t)buf[5] << 8));
 }
 
 void paw3395_shutdown(struct paw3395_dev *dev) {

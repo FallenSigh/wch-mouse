@@ -21,6 +21,7 @@
 #include "log.h"
 #include "motor.h"
 #include "mouse.h"
+#include "paw3395_port.h"
 
 /* Side-1 (PR_SW4/BACK) + side-2 (PR_SW5/FWD) held this long enter/leave. */
 #define AIR_MOUSE_HOLD_MS        2000u
@@ -111,7 +112,10 @@ static void air_mouse_gyro_on(void)
 static void air_mouse_enter(uint32_t now_ms)
 {
     /* Hand the cursor over: optical sensor down, gyro up, then start measuring
-     * the zero-rate bias before any motion is reported. */
+     * the zero-rate bias before any motion is reported. The optical sensor's
+     * IRQ-driven read is parked first so its blocking shutdown write cannot
+     * collide with an in-flight DMA burst. */
+    paw3395_motion_stop();
     paw3395_shutdown(s_cfg.paw);
     air_mouse_gyro_on();
 
@@ -143,6 +147,7 @@ static void air_mouse_exit(uint32_t now_ms)
     paw3395_set_cpi(s_cfg.paw, s_cfg.cpi);
     paw3395_set_mode(s_cfg.paw, s_cfg.mode);
     paw3395_set_lift_cut(s_cfg.paw, s_cfg.lift);
+    paw3395_motion_start();
 
     s_active     = false;
     s_calib_left = 0;

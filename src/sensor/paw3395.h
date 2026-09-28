@@ -39,11 +39,17 @@ struct paw3395_dev {
     bool     initialized;
 };
 
+/* Motion burst: reading register 0x16 returns this many bytes, Delta_X at
+ * offset 2 and Delta_Y at offset 4. The port's DMA read path shares these. */
+#define PAW3395_MOTION_BURST_REG  0x16u
+#define PAW3395_MOTION_BURST_LEN  12u
+
 bool paw3395_init(struct paw3395_dev *dev);
 void paw3395_set_cpi(struct paw3395_dev *dev, uint16_t cpi);
 void paw3395_set_mode(struct paw3395_dev *dev, enum paw3395_mode mode);
 void paw3395_set_lift_cut(struct paw3395_dev *dev, enum paw3395_lift_cut cut);
 void paw3395_burst(struct paw3395_dev *dev, uint8_t *buf);
+void paw3395_parse_burst(const uint8_t *buf, int16_t *dx, int16_t *dy);
 void paw3395_shutdown(struct paw3395_dev *dev);
 
 #ifdef __cplusplus

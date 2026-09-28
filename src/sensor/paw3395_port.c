@@ -22,6 +22,9 @@
 #define PIN_MS_MISO   GPIO_Pin_15
 #define PIN_MS_MOTION GPIO_Pin_17
 #define PIN_MS_RST    GPIO_Pin_18
+/* Flying-wire copy of MOTION on PA7 (PB17 works for polling but cannot raise a
+ * GPIO interrupt; PA7 can). */
+#define PIN_MS_MOTION_ALT GPIO_Pin_7
 
 static inline void cs_low(void) {
     GPIOA_ResetBits(PIN_MS_CS);
@@ -51,6 +54,103 @@ static void paw3395_delay_us(uint32_t period) {
     DelayUs(period);
 }
 
+bool paw3395_motion_ready(void) {
+    return GPIOA_ReadPortPin(PIN_MS_MOTION_ALT) == 0u;
+}
+
+/* --- IRQ-driven motion burst -------------------------------------------- */
+
+static volatile bool    s_motion_on;
+static volatile int32_t s_motion_dx;
+static volatile int32_t s_motion_dy;
+static __attribute__((aligned(4))) uint8_t s_motion_buf[PAW3395_MOTION_BURST_LEN];
+
+/* One burst read into the accumulator, through the vendor's DMA helper. Callers
+ * must exclude each other: the scan-loop call masks the GPIO interrupt, and the
+ * ISR is the only other user. */
+static void paw3395_motion_burst(void) {
+    int16_t dx;
+    int16_t dy;
+
+    cs_low();
+    SPI0_MasterSendByte(PAW3395_MOTION_BURST_REG);
+    SPI0_MasterDMARecv(s_motion_buf, PAW3395_MOTION_BURST_LEN);
+    cs_high();
+
+    paw3395_parse_burst(s_motion_buf, &dx, &dy);
+    s_motion_dx += dx;
+    s_motion_dy += dy;
+}
+
+__INTERRUPT void GPIOA_IRQHandler(void) {
+    if (R16_PA_INT_IF & PIN_MS_MOTION_ALT) {
+        R16_PA_INT_IF = PIN_MS_MOTION_ALT;   /* RW1: clear */
+
+        if (s_motion_on) {
+            paw3395_motion_burst();
+        }
+    }
+}
+
+void paw3395_motion_start(void) {
+    s_motion_dx = 0;
+    s_motion_dy = 0;
+    s_motion_on = false;
+
+    R16_PA_INT_IF = PIN_MS_MOTION_ALT;
+    GPIOA_ITModeCfg(PIN_MS_MOTION_ALT, GPIO_ITMode_FallEdge);
+
+    s_motion_on = true;
+
+    /* Catch a sample that was already waiting before the interrupt went live. */
+    if (paw3395_motion_ready()) {
+        paw3395_motion_burst();
+    }
+
+    PFIC_EnableIRQ(GPIO_A_IRQn);
+}
+
+void paw3395_motion_stop(void) {
+    s_motion_on = false;
+    PFIC_DisableIRQ(GPIO_A_IRQn);
+    R16_PA_INT_EN &= ~PIN_MS_MOTION_ALT;
+    R16_PA_INT_IF = PIN_MS_MOTION_ALT;
+}
+
+void paw3395_motion_read(int16_t *dx, int16_t *dy) {
+    int32_t x;
+    int32_t y;
+
+    /* Top up if the pin is still asserted; mask the interrupt so a falling edge
+     * cannot start a nested burst on the SPI bus. */
+    PFIC_DisableIRQ(GPIO_A_IRQn);
+    if (s_motion_on && paw3395_motion_ready()) {
+        paw3395_motion_burst();
+    }
+    PFIC_EnableIRQ(GPIO_A_IRQn);
+
+    PFIC_DisableAllIRQ();
+    x = s_motion_dx;
+    y = s_motion_dy;
+    s_motion_dx = 0;
+    s_motion_dy = 0;
+    PFIC_EnableAllIRQ();
+
+    if (x > 32767) {
+        x = 32767;
+    } else if (x < -32768) {
+        x = -32768;
+    }
+    if (y > 32767) {
+        y = 32767;
+    } else if (y < -32768) {
+        y = -32768;
+    }
+
+    *dx = (int16_t)x;
+    *dy = (int16_t)y;
+}
+
 bool paw3395_port_init(struct paw3395_dev *dev) {
     GPIOA_SetBits(PIN_MS_SCLK | PIN_MS_MOSI | PIN_MS_CS);
     GPIOA_ModeCfg(PIN_MS_SCLK | PIN_MS_MOSI | PIN_MS_CS, GPIO_ModeOut_PP_5mA);
@@ -58,6 +158,7 @@ bool paw3395_port_init(struct paw3395_dev *dev) {
     GPIOB_SetBits(PIN_MS_RST);
     GPIOB_ModeCfg(PIN_MS_RST, GPIO_ModeOut_PP_5mA);
     GPIOB_ModeCfg(PIN_MS_MOTION, GPIO_ModeIN_Floating);
+    GPIOA_ModeCfg(PIN_MS_MOTION_ALT, GPIO_ModeIN_PU);
 
     SPI0_MasterDefInit();
     SPI0_DataMode(Mode0_HighBitINFront);
