@@ -32,7 +32,7 @@ cmake --build build --target wch-dongle
 
 ## Layout & boundaries
 
-- `src/` — mouse application code (edit here), grouped by role: `app/` (mouse, radio_mode, bat, motor) · `transport/` (the transport router + USB/BLE/RF backends, plus the shared `rf_cfg.h` on-air contract) · `sensor/` (PAW3395 and the vendored Bosch BMI270/BMI2 API with its ports) · `display/` (the I2C bus, the SSD1315 OLED and its vendored LibDriver core) · `led/` (WS2812 driver + `rgb_fx` animations) · `bsp/` (vendor-derived USB device/descriptors, UART and logging). Headers are included by basename, so each group sits on the include path rather than being path-qualified in the sources.
+- `src/` — mouse application code (edit here), grouped by role: `app/` (mouse, air_mouse, radio_mode, bat, motor, bio) · `transport/` (the transport router + USB/BLE/RF backends, plus the shared `rf_cfg.h` on-air contract) · `sensor/` (PAW3395 and the vendored Bosch BMI270/BMI2 API with its ports) · `display/` (the I2C bus, the SSD1315 OLED and its vendored LibDriver core) · `led/` (WS2812 driver + `rgb_fx` animations) · `bsp/` (vendor-derived USB device/descriptors, UART and logging). Headers are included by basename, so each group sits on the include path rather than being path-qualified in the sources.
 - `dongle/` — the 2.4G receiver dongle firmware: `src/main.c` superloop, `src/rf_dongle.c` RF host (RX) → USB HID.
 - `cmake/wch_sdk.cmake` — source lists, flags and the `wch_firmware*()` helpers shared by both firmwares. Add a driver once, both get it.
 - `StdPeriphDriver/`, `Startup/`, `RVMSIS/`, `Ld/Link.ld` — vendor SDK. Do not edit; formatting is disabled there to preserve WCH style.
@@ -50,6 +50,28 @@ cmake --build build --target wch-dongle
 - **Mouse report**: 6-byte packed `MouseReport_t` (`src/mouse.h`), shared byte-identically by USB and BLE. The layout is duplicated in the USB HID descriptor (`src/usb_desc.c`, `MyMouseReportDesc`) and the BLE report map (`ble/Profile/hidmouseservice.c`) — keep both in sync. Note the stale `4-byte report` comment in `usb_desc.c`: dx/dy are actually 16-bit.
 - Sensors: PAW3395 (SPI) in `paw3395.c`; its motion burst is read on the MOTION pin's **PA7** falling edge through SPI0's DMA (`paw3395_motion_*` in `paw3395_port.c`). BMI270 via the vendored Bosch BMI2 API (`bmi270.c`/`bmi2.c`). Pin assignments: `docs/io.csv`.
 - Logging: `src/log.c` non-blocking ring over UART1; use `LOG_E/W/I/D(tag, ...)`. `LOG_LEVEL` strips higher-verbosity messages at preprocess time. `log_printf` blocks on the UART FIFO — thread context only, never from an ISR.
+- **BIO health module** (`src/app/bio.c`, external module on UART3): reset is a GPIO on **PA11** (active low); `bio_init()`/`bio_reset()` bring it up. Mode commands are single bytes on the UART3 link — acquisition `0x8A`/`0x88`, sleep `0x98`/`0x00`, checkup `0x8E`/`0x8C` — and the checkup duration is a 3-byte `0x84` frame. Its 88-byte real-time packets (delimited by a lone `0xFF` header) are parsed locally by `bio_rt_feed()` from the UART3 ISR, in parallel with the USB CDC bridge; `main` shows the **last valid** packet on the OLED. UART3 RX therefore stays enabled without a host, and only the CDC forwarding is gated on USB. On the UART side note the module's own JFC103 protocol: 38400 8N1, little-endian.
+
+## Power management
+
+**The firmware never sleeps.** `HAL_SLEEP = FALSE` in `ble/HAL/include/CONFIG.h`, so the CH585 sits at 62.4 MHz with the 1 kHz TIM3 tick and the superloop running flat out. Everything below is per-peripheral gating on top of an always-awake core — a real sleep/idle path is the biggest remaining lever. There is no power harness in the repo: a baseline has to come from bench instrumentation (current meter / power analyser), measured per state (idle on the desk, moving, BLE vs RF, USB attached).
+
+Already gated:
+- **USBHS PHY** — `usb_poll()` powers it only while USB owns the link, plus the 800 ms VBUS-edge probe (see the USB gotcha). 10–20 mA, the largest saving so far.
+- **IMU** — `bmi270_port_init()` only loads the config; both sensors stay disabled until `air_mouse` enables the gyro on entry, so nothing reads the IMU in normal use.
+- **PAW3395** — read on the MOTION pin's PA7 falling edge through SPI0 DMA, so an idle scan never touches SPI0.
+- **DC-DC** — `WCH_DCDC_ENABLE` drops run current to ~60% of the pass-through LDO (needs the VSW inductor).
+
+Always on / to evaluate:
+- 1 kHz **TIM3** tick and the superloop (no idle or sleep entry anywhere yet).
+- **RGB** WS2812 underglow: idle hue at brightness 1, but the chain and the `RGB_EN` (PB2) rail stay live; `rgb_set_enable(false)` cuts the rail.
+- **OLED** SSD1315: once `oled_init()` succeeds the panel stays powered (charge pump + `OLED_EN` PB3). There is no blank/off path beyond clearing the gram.
+- **BIO** module: `bio_measure_enable()` runs acquisition continuously and UART3 RX stays enabled with or without a host (the local packet parse). The module's own draw is not characterised.
+- **Motor**: only pulsed on an air-mouse switch, so no steady load.
+
+Battery: BQ24075 (PGOOD PB6 / CHG PB5, both open-drain active low) and `BT_VOL` (PA3 = ADC AIN6, VBAT through a 1:2 divider → `bat_voltage_mv()`); `bat_poll()` samples it.
+
+Plausible sleep wake sources when that work starts: PA7 (motion), VBUS via `bat_power_good()`, the RTC/32K, and the radio's TMOS events.
 
 ## Gotchas that will bite
 
