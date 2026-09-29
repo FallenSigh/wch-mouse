@@ -11,6 +11,12 @@
  * Coordinates are display pixels: x 0..127, y 0..63. */
 bool oled_init(void);
 
+/* Power the panel on or off. Off cuts the OLED_EN rail and holds the panel in
+ * reset; on re-runs the whole bring-up, since nothing survives the power cut.
+ * Returns whether the panel is usable afterwards. */
+bool oled_set_enable(bool on);
+bool oled_enabled(void);
+
 void oled_clear(void);
 bool oled_flush(void);
 bool oled_text(uint8_t x, uint8_t y, const char *str);

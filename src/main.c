@@ -132,12 +132,17 @@ int main() {
 
     mouse_init(&paw);
 
-    /* The OLED bring-up blocks for a few hundred ms (reset settle plus the
-     * first full-screen flush), so it runs before the USB device layer is up.
-     * Blocking later would starve the SETUP handling the host needs during
-     * enumeration and USB would never take over. */
-    if (oled_init()) {
-        oled_demo();
+    /* Load the stored configuration first: it decides whether the panel comes
+     * up at all, and the OLED bring-up blocks for a few hundred ms (reset
+     * settle plus the first full-screen flush), so it has to run before the USB
+     * device layer - blocking later would starve the SETUP handling the host
+     * needs during enumeration and USB would never take over. */
+    settings_init(&paw);
+
+    if (settings_get()->oled_enable != 0u) {
+        if (oled_set_enable(true)) {
+            oled_demo();
+        }
     }
 
 #ifdef WCH_BLE_ENABLE
@@ -164,9 +169,8 @@ int main() {
     motor_init();
     paw3395_port_init(&paw);
 
-    /* Restore the stored configuration (or the built-in defaults) before the
-     * PA7 motion interrupt is armed, then start reading the sensor. */
-    settings_init(&paw);
+    /* Apply the stored configuration before the PA7 motion interrupt is armed,
+     * then start reading the sensor. */
     settings_apply();
     paw3395_motion_start();
 

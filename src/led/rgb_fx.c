@@ -27,6 +27,25 @@ static uint32_t s_base_ms;
 static uint32_t s_last_ms;
 static uint16_t s_hue;
 
+static rgb_fx_cfg_t s_cfg = {
+    .enable     = true,
+    .effect     = RGB_FX_EFFECT_HUE,
+    .brightness = 1u,
+    .r          = 255u,
+    .g          = 255u,
+    .b          = 255u,
+};
+
+void rgb_fx_set_config(const rgb_fx_cfg_t *cfg)
+{
+    s_cfg = *cfg;
+}
+
+const rgb_fx_cfg_t *rgb_fx_get_config(void)
+{
+    return &s_cfg;
+}
+
 static void rgb_fx_mode_colour(bool ble)
 {
     if (ble) {
@@ -63,10 +82,26 @@ static void rgb_fx_hue(uint16_t hue)
 
 void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
 {
+    static bool s_rail_on;
+
     if (!s_started) {
         s_started = true;
         s_base_ms = now_ms;
         s_last_ms = now_ms;
+    }
+
+    /* Cutting the rail suppresses everything, transient states included. */
+    if (!s_cfg.enable) {
+        if (s_rail_on) {
+            s_rail_on = false;
+            rgb_set_enable(false);
+        }
+        return;
+    }
+
+    if (!s_rail_on) {
+        s_rail_on = true;
+        rgb_set_enable(true);
     }
 
     if (now_ms - s_last_ms < RGB_FX_PERIOD_MS) {
@@ -84,8 +119,11 @@ void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
         rgb_set_brightness((now_ms & RGB_FX_BLINK_MASK) ? RGB_FX_BRIGHT
                                                         : (RGB_FX_BRIGHT / 8u));
         rgb_fx_mode_colour(!ble);
+    } else if (s_cfg.effect == RGB_FX_EFFECT_SOLID) {
+        rgb_set_brightness(s_cfg.brightness);
+        rgb_set_all(s_cfg.r, s_cfg.g, s_cfg.b);
     } else {
-        rgb_set_brightness(1);
+        rgb_set_brightness(s_cfg.brightness);
         rgb_fx_hue(s_hue);
         s_hue = (uint16_t)((s_hue + 1u) % 360u);
     }

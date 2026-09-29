@@ -37,6 +37,7 @@
 
 static ssd1315_handle_t s_oled;
 static bool             s_ready;
+static bool             s_enabled;   /* rail powered and initialised */
 
 #define OLED_TRY(call)                                        \
     do {                                                      \
@@ -131,7 +132,33 @@ bool oled_init(void)
     }
 
     LOG_I("OLED", "ssd1315 %ux%u up", (unsigned)OLED_WIDTH, (unsigned)OLED_HEIGHT);
+    s_enabled = true;
     return true;
+}
+
+bool oled_set_enable(bool on)
+{
+    if (on) {
+        return s_enabled ? s_ready : oled_init();
+    }
+
+    if (!s_enabled) {
+        return false;
+    }
+
+    /* Nothing on the panel survives a power cut, so a later enable re-runs the
+     * whole bring-up; hold reset low meanwhile so the I/O pins cannot feed it. */
+    s_enabled = false;
+    s_ready   = false;
+    GPIOB_ModeCfg(OLED_RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ResetBits(OLED_RST_PIN);
+    oled_rail(false);
+    return false;
+}
+
+bool oled_enabled(void)
+{
+    return s_enabled;
 }
 
 void oled_clear(void)

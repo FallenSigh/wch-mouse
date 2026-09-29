@@ -28,6 +28,10 @@
 #define PROTO_CMD_SET_SENSOR    0x13u
 #define PROTO_CMD_GET_LIFT      0x14u
 #define PROTO_CMD_SET_LIFT      0x15u
+#define PROTO_CMD_GET_RGB       0x30u
+#define PROTO_CMD_SET_RGB       0x31u
+#define PROTO_CMD_GET_OLED      0x40u
+#define PROTO_CMD_SET_OLED      0x41u
 #define PROTO_CMD_GET_BATTERY   0x24u
 #define PROTO_CMD_BIO_ACQ       0x50u
 #define PROTO_CMD_BIO_SLEEP     0x51u
@@ -186,6 +190,52 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             settings_set_lift(frame[3]);
 
             const uint8_t data[1] = { settings_get()->lift_cut };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_GET_RGB: {
+            const settings_t *s = settings_get();
+            const uint8_t data[6] = { s->rgb_enable, s->rgb_effect, s->rgb_brightness,
+                                      s->rgb_r, s->rgb_g, s->rgb_b };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_RGB: {
+            if (plen < 6u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+            if (frame[4] > 1u) {
+                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
+                break;
+            }
+
+            settings_set_rgb(frame[3], frame[4], frame[5], frame[6], frame[7], frame[8]);
+
+            const settings_t *s = settings_get();
+            const uint8_t data[6] = { s->rgb_enable, s->rgb_effect, s->rgb_brightness,
+                                      s->rgb_r, s->rgb_g, s->rgb_b };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_GET_OLED: {
+            const uint8_t data[1] = { settings_get()->oled_enable };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_OLED: {
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            settings_set_oled(frame[3]);
+
+            const uint8_t data[1] = { settings_get()->oled_enable };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }

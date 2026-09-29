@@ -46,6 +46,10 @@ CMD_SET_SENSOR = 0x13
 CMD_GET_LIFT = 0x14
 CMD_SET_LIFT = 0x15
 CMD_GET_BATTERY = 0x24
+CMD_GET_RGB = 0x30
+CMD_SET_RGB = 0x31
+CMD_GET_OLED = 0x40
+CMD_SET_OLED = 0x41
 CMD_BIO_ACQ = 0x50
 CMD_BIO_SLEEP = 0x51
 
@@ -165,6 +169,13 @@ def main() -> int:
     p.add_argument("value", nargs="?", type=int, choices=range(4))
     p = sub.add_parser("lift", help="get lift cut, or set 0=1mm / 1=2mm")
     p.add_argument("value", nargs="?", type=int, choices=(0, 1))
+    p = sub.add_parser("rgb", help="get the underglow, or set fields (read-modify-write)")
+    p.add_argument("--enable", type=int, choices=(0, 1))
+    p.add_argument("--effect", type=int, choices=(0, 1), help="0 = hue cycle, 1 = solid")
+    p.add_argument("--brightness", type=int, help="1..255")
+    p.add_argument("--color", help="solid colour, RRGGBB")
+    p = sub.add_parser("oled", help="get the panel state, or set on/off")
+    p.add_argument("value", nargs="?", type=int, choices=(0, 1))
     p = sub.add_parser("bio-acq", help="BIO acquisition on/off")
     p.add_argument("value", type=int, choices=(0, 1))
     p = sub.add_parser("bio-sleep", help="BIO sleep on/off")
@@ -223,6 +234,38 @@ def main() -> int:
                 st, d = transact(dev, CMD_SET_LIFT, bytes([value]), seq=opts.seq)
             ok(st)
             print(f"lift {d[0]} ({LIFT_CUTS[d[0]]})")
+        elif cmd == "rgb":
+            st, cur = transact(dev, CMD_GET_RGB, seq=opts.seq)
+            ok(st)
+            want = list(cur[:6])
+            changed = False
+            if opts.enable is not None:
+                want[0] = opts.enable
+                changed = True
+            if opts.effect is not None:
+                want[1] = opts.effect
+                changed = True
+            if opts.brightness is not None:
+                want[2] = opts.brightness
+                changed = True
+            if opts.color is not None:
+                rgb = bytes.fromhex(opts.color.lstrip("#"))
+                if len(rgb) != 3:
+                    raise SystemExit("--color must be RRGGBB")
+                want[3], want[4], want[5] = rgb[0], rgb[1], rgb[2]
+                changed = True
+            if changed:
+                st, cur = transact(dev, CMD_SET_RGB, bytes(want), seq=opts.seq)
+                ok(st)
+            print(f"rgb enable={cur[0]} effect={cur[1]} ({'solid' if cur[1] else 'hue'}) "
+                  f"brightness={cur[2]} colour={cur[3]:02x}{cur[4]:02x}{cur[5]:02x}")
+        elif cmd == "oled":
+            if opts.value is None:
+                st, d = transact(dev, CMD_GET_OLED, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_OLED, bytes([opts.value]), seq=opts.seq)
+            ok(st)
+            print("oled", "on" if d[0] else "off")
         elif cmd == "bio-acq":
             st, _ = transact(dev, CMD_BIO_ACQ, bytes([opts.value]), seq=opts.seq)
             ok(st)

@@ -13,17 +13,26 @@
 #include "CH58x_common.h"
 #include "bio.h"
 #include "log.h"
+#include "oled.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
+#include "rgb_fx.h"
 
 #define SETTINGS_FLASH_OFF   0x1000u
-#define SETTINGS_MAGIC       0xC5u
+#define SETTINGS_MAGIC       0xC7u
 
 /* What a blank device boots with. */
 #define SETTINGS_DEF_CPI          800u
 #define SETTINGS_DEF_MODE         PAW3395_MODE_HIGH_PERFORMANCE
 #define SETTINGS_DEF_LIFT         PAW3395_LIFT_CUT_2MM
 #define SETTINGS_DEF_BIO_ACQUIRE  1u
+#define SETTINGS_DEF_RGB_ENABLE   1u
+#define SETTINGS_DEF_RGB_EFFECT   RGB_FX_EFFECT_HUE
+#define SETTINGS_DEF_RGB_BRIGHT   1u
+#define SETTINGS_DEF_RGB_R        255u
+#define SETTINGS_DEF_RGB_G        255u
+#define SETTINGS_DEF_RGB_B        255u
+#define SETTINGS_DEF_OLED_ENABLE  1u
 
 /* Persist this long after the last change, so a burst of SETs costs one erase. */
 #define SETTINGS_SAVE_DELAY_MS    1000u
@@ -36,16 +45,31 @@ typedef struct __attribute__((packed)) {
     uint8_t  sensor_mode;
     uint8_t  lift_cut;
     uint8_t  bio_acquire;
-    uint8_t  resv1;
+    uint8_t  rgb_enable;
+    uint8_t  rgb_effect;
+    uint8_t  rgb_brightness;
+    uint8_t  rgb_r;
+    uint8_t  rgb_g;
+    uint8_t  rgb_b;
+    uint8_t  oled_enable;
+    uint8_t  resv2;
+    uint8_t  resv3;
 } settings_record_t;
 
 static struct paw3395_dev *s_paw;
 
 static settings_t s_cur = {
-    .cpi          = SETTINGS_DEF_CPI,
-    .sensor_mode  = SETTINGS_DEF_MODE,
-    .lift_cut     = SETTINGS_DEF_LIFT,
-    .bio_acquire  = SETTINGS_DEF_BIO_ACQUIRE,
+    .cpi            = SETTINGS_DEF_CPI,
+    .sensor_mode    = SETTINGS_DEF_MODE,
+    .lift_cut       = SETTINGS_DEF_LIFT,
+    .bio_acquire    = SETTINGS_DEF_BIO_ACQUIRE,
+    .rgb_enable     = SETTINGS_DEF_RGB_ENABLE,
+    .rgb_effect     = SETTINGS_DEF_RGB_EFFECT,
+    .rgb_brightness = SETTINGS_DEF_RGB_BRIGHT,
+    .rgb_r          = SETTINGS_DEF_RGB_R,
+    .rgb_g          = SETTINGS_DEF_RGB_G,
+    .rgb_b          = SETTINGS_DEF_RGB_B,
+    .oled_enable    = SETTINGS_DEF_OLED_ENABLE,
 };
 
 static bool     s_dirty;
@@ -63,13 +87,21 @@ static void settings_save(void)
     uint32_t er;
     uint32_t wr;
 
-    rec.magic       = SETTINGS_MAGIC;
-    rec.resv0       = 0u;
-    rec.cpi         = s_cur.cpi;
-    rec.sensor_mode = s_cur.sensor_mode;
-    rec.lift_cut    = s_cur.lift_cut;
-    rec.bio_acquire = s_cur.bio_acquire;
-    rec.resv1       = 0u;
+    rec.magic          = SETTINGS_MAGIC;
+    rec.resv0          = 0u;
+    rec.cpi            = s_cur.cpi;
+    rec.sensor_mode    = s_cur.sensor_mode;
+    rec.lift_cut       = s_cur.lift_cut;
+    rec.bio_acquire    = s_cur.bio_acquire;
+    rec.rgb_enable     = s_cur.rgb_enable;
+    rec.rgb_effect     = s_cur.rgb_effect;
+    rec.rgb_brightness = s_cur.rgb_brightness;
+    rec.rgb_r          = s_cur.rgb_r;
+    rec.rgb_g          = s_cur.rgb_g;
+    rec.rgb_b          = s_cur.rgb_b;
+    rec.oled_enable    = s_cur.oled_enable;
+    rec.resv2          = 0u;
+    rec.resv3          = 0u;
 
     er = EEPROM_ERASE(SETTINGS_FLASH_OFF, EEPROM_BLOCK_SIZE);
     wr = EEPROM_WRITE(SETTINGS_FLASH_OFF, (uint8_t *)&rec, sizeof(rec));
@@ -96,18 +128,41 @@ void settings_init(struct paw3395_dev *paw)
     }
 
     /* Reject a stale or foreign record field by field. */
-    s_cur.cpi         = (rec.cpi >= 50u && rec.cpi <= 26000u) ? rec.cpi : SETTINGS_DEF_CPI;
-    s_cur.sensor_mode = (rec.sensor_mode < PAW3395_MODE_COUNT) ? rec.sensor_mode : SETTINGS_DEF_MODE;
-    s_cur.lift_cut    = (rec.lift_cut <= PAW3395_LIFT_CUT_2MM) ? rec.lift_cut : SETTINGS_DEF_LIFT;
-    s_cur.bio_acquire = (rec.bio_acquire <= 1u) ? rec.bio_acquire : SETTINGS_DEF_BIO_ACQUIRE;
+    s_cur.cpi            = (rec.cpi >= 50u && rec.cpi <= 26000u) ? rec.cpi : SETTINGS_DEF_CPI;
+    s_cur.sensor_mode    = (rec.sensor_mode < PAW3395_MODE_COUNT) ? rec.sensor_mode : SETTINGS_DEF_MODE;
+    s_cur.lift_cut       = (rec.lift_cut <= PAW3395_LIFT_CUT_2MM) ? rec.lift_cut : SETTINGS_DEF_LIFT;
+    s_cur.bio_acquire    = (rec.bio_acquire <= 1u) ? rec.bio_acquire : SETTINGS_DEF_BIO_ACQUIRE;
+    s_cur.rgb_enable     = (rec.rgb_enable <= 1u) ? rec.rgb_enable : SETTINGS_DEF_RGB_ENABLE;
+    s_cur.rgb_effect     = (rec.rgb_effect <= RGB_FX_EFFECT_SOLID) ? rec.rgb_effect : SETTINGS_DEF_RGB_EFFECT;
+    s_cur.rgb_brightness = (rec.rgb_brightness != 0u) ? rec.rgb_brightness : SETTINGS_DEF_RGB_BRIGHT;
+    s_cur.rgb_r          = rec.rgb_r;
+    s_cur.rgb_g          = rec.rgb_g;
+    s_cur.rgb_b          = rec.rgb_b;
+    s_cur.oled_enable    = (rec.oled_enable <= 1u) ? rec.oled_enable : SETTINGS_DEF_OLED_ENABLE;
 
-    LOG_I("SET", "loaded cpi=%u mode=%u lift=%u bio=%u", (unsigned)s_cur.cpi,
-          (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut, (unsigned)s_cur.bio_acquire);
+    LOG_I("SET", "loaded cpi=%u mode=%u lift=%u bio=%u rgb=%u/%u/%u oled=%u", (unsigned)s_cur.cpi,
+          (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut, (unsigned)s_cur.bio_acquire,
+          (unsigned)s_cur.rgb_enable, (unsigned)s_cur.rgb_effect, (unsigned)s_cur.rgb_brightness,
+          (unsigned)s_cur.oled_enable);
 }
 
 const settings_t *settings_get(void)
 {
     return &s_cur;
+}
+
+static void settings_apply_rgb(void)
+{
+    const rgb_fx_cfg_t cfg = {
+        .enable     = (s_cur.rgb_enable != 0u),
+        .effect     = s_cur.rgb_effect,
+        .brightness = s_cur.rgb_brightness,
+        .r          = s_cur.rgb_r,
+        .g          = s_cur.rgb_g,
+        .b          = s_cur.rgb_b,
+    };
+
+    rgb_fx_set_config(&cfg);
 }
 
 void settings_apply(void)
@@ -123,6 +178,8 @@ void settings_apply(void)
     } else {
         bio_measure_disable();
     }
+
+    settings_apply_rgb();
 }
 
 /* The sensor writes share SPI0 with the PA7 motion ISR, so park it around them. */
@@ -174,6 +231,28 @@ void settings_set_bio(uint8_t on)
         bio_measure_disable();
     }
 
+    settings_dirty();
+}
+
+void settings_set_rgb(uint8_t enable, uint8_t effect, uint8_t brightness,
+                      uint8_t r, uint8_t g, uint8_t b)
+{
+    s_cur.rgb_enable     = (enable != 0u) ? 1u : 0u;
+    s_cur.rgb_effect     = (effect <= RGB_FX_EFFECT_SOLID) ? effect : SETTINGS_DEF_RGB_EFFECT;
+    s_cur.rgb_brightness = brightness;
+    s_cur.rgb_r          = r;
+    s_cur.rgb_g          = g;
+    s_cur.rgb_b          = b;
+
+    settings_apply_rgb();
+    settings_dirty();
+}
+
+void settings_set_oled(uint8_t on)
+{
+    s_cur.oled_enable = (on != 0u) ? 1u : 0u;
+
+    (void)oled_set_enable(s_cur.oled_enable != 0u);
     settings_dirty();
 }
 
