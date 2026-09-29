@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""Talk to the wch-mouse configuration channel over its HID Feature report.
+
+The mouse exposes a vendor-defined Feature report (usage page 0xFF00, no
+Report ID, 63 data bytes) on its HID interface. HID gives the host no payload
+on a GET_FEATURE, so every transaction is two steps:
+
+    SET_FEATURE  <- host writes a request frame
+    GET_FEATURE  -> host reads the answer the device prepared
+
+Frame (little-endian, 63 bytes):
+
+    [0]     cmd                 (bit 7 set on a response)
+    [1]     seq                 (echoed by the device)
+    [2]     len                 (payload bytes)
+    [3..]   payload
+    [3+len] sum8                (sum of bytes 0..2+len)
+    rest    0
+
+A reply's payload starts with a status byte (0 = OK).
+
+Requires the ``hid`` module:  pip install hidapi
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+
+# USB ids and the report shape, matching src/bsp/usb_desc.h and src/app/proto.h.
+VID = 0x1A86
+PID = 0xFE0C
+HID_ITF = 2
+REPORT_ID = 0x00
+FRAME_LEN = 63
+
+# Commands (src/app/proto.c).
+CMD_GET_VERSION = 0x01
+CMD_GET_INFO = 0x02
+CMD_GET_RADIO = 0x03
+CMD_GET_DPI = 0x10
+CMD_SET_DPI = 0x11
+CMD_GET_SENSOR = 0x12
+CMD_SET_SENSOR = 0x13
+CMD_GET_LIFT = 0x14
+CMD_SET_LIFT = 0x15
+CMD_GET_BATTERY = 0x24
+CMD_BIO_ACQ = 0x50
+CMD_BIO_SLEEP = 0x51
+
+STATUS = {
+    0x00: "OK",
+    0x01: "unknown command",
+    0x02: "bad length",
+    0x03: "bad checksum",
+    0x04: "unsupported",
+}
+
+SENSOR_MODES = ("high-performance", "low-power", "office", "corded-gaming")
+LIFT_CUTS = ("1mm", "2mm")
+
+
+def build_frame(cmd: int, seq: int, payload: bytes = b"") -> bytes:
+    """Encode one request frame (FRAME_LEN bytes, no Report ID)."""
+    if len(payload) > FRAME_LEN - 4:
+        raise ValueError(f"payload too long ({len(payload)} > {FRAME_LEN - 4})")
+
+    frame = bytearray(FRAME_LEN)
+    frame[0] = cmd & 0xFF
+    frame[1] = seq & 0xFF
+    frame[2] = len(payload)
+    frame[3:3 + len(payload)] = payload
+    frame[3 + len(payload)] = sum(frame[0:3 + len(payload)]) & 0xFF
+    return bytes(frame)
+
+
+def ok(status: int) -> None:
+    if status != 0x00:
+        raise SystemExit(f"device returned status {status:#04x} ({STATUS.get(status, '?')})")
+
+
+def open_device(opts):
+    try:
+        import hid
+    except ImportError:
+        raise SystemExit("the 'hid' module is missing: pip install hidapi")
+
+    infos = hid.enumerate(opts.vid, opts.pid)
+    if opts.list:
+        for info in infos:
+            print(f"itf={info.get('interface_number')} "
+                  f"usage={info.get('usage_page'):#06x}:{info.get('usage'):#06x} "
+                  f"{info.get('product_string')} "
+                  f"{info['path'].decode(errors='replace')}")
+        raise SystemExit(0)
+
+    if not infos:
+        raise SystemExit(f"no HID device {opts.vid:#06x}:{opts.pid:#06x} found "
+                         "(plugged in? new descriptor flashed? re-plug needed?)")
+
+    want = opts.path.encode() if opts.path else None
+    chosen = next((i for i in infos if want and i["path"] == want), None)
+    if chosen is None:
+        chosen = next((i for i in infos if i.get("interface_number") == HID_ITF), infos[0])
+
+    path = chosen["path"]
+    try:
+        if hasattr(hid, "Device"):      # pyhidapi / hidapi: Device(path=...)
+            return hid.Device(path=path)
+
+        dev = hid.device()              # older pyhidapi: device() + open_path()
+        dev.open_path(path)
+        return dev
+    except Exception as exc:
+        raise SystemExit(
+            f"cannot open {path.decode(errors='replace')}: {exc}\n"
+            "hidraw needs read/write access. Either run this as root, or install the\n"
+            "udev rule shipped in this repo:\n"
+            "  sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/\n"
+            "  sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw"
+        )
+
+
+def transact(dev, cmd: int, payload: bytes = b"", seq: int = 1, wait: float = 0.03):
+    """Send one request and return (status, data) from the reply."""
+    dev.send_feature_report(bytes([REPORT_ID]) + build_frame(cmd, seq, payload))
+    time.sleep(wait)
+
+    rsp = bytes(dev.get_feature_report(REPORT_ID, 1 + FRAME_LEN))
+    if len(rsp) < 1 + 4:
+        raise SystemExit(f"short response ({len(rsp)} bytes)")
+
+    reply = rsp[1:1 + FRAME_LEN]  # strip the Report ID prefix
+    if reply[0] != ((cmd | 0x80) & 0xFF):
+        raise SystemExit(f"unexpected reply cmd {reply[0]:#04x} for {cmd:#04x}")
+    if reply[1] != (seq & 0xFF):
+        raise SystemExit(f"sequence mismatch: sent {seq}, got {reply[1]}")
+
+    plen = reply[2]
+    return reply[3], reply[4:4 + max(plen - 1, 0)]
+
+
+def u16(data: bytes, off: int = 0) -> int:
+    return data[off] | (data[off + 1] << 8)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="wch-mouse HID Feature report client")
+    ap.add_argument("--vid", type=lambda s: int(s, 0), default=VID)
+    ap.add_argument("--pid", type=lambda s: int(s, 0), default=PID)
+    ap.add_argument("--path", help="force a HID path (see --list)")
+    ap.add_argument("--list", action="store_true", help="list matching HID interfaces and exit")
+    ap.add_argument("--seq", type=int, default=1, help="sequence byte to send")
+
+    sub = ap.add_subparsers(dest="command")
+    sub.add_parser("version", help="protocol + firmware version")
+    sub.add_parser("info", help="capability bitmap")
+    sub.add_parser("radio", help="active radio (rf/ble)")
+    sub.add_parser("battery", help="voltage, percent, charge flags")
+
+    p = sub.add_parser("dpi", help="get CPI, or set it with a value")
+    p.add_argument("value", nargs="?", type=int, help="CPI to set (50..26000)")
+    p = sub.add_parser("sensor", help="get sensor mode, or set 0..3")
+    p.add_argument("value", nargs="?", type=int, choices=range(4))
+    p = sub.add_parser("lift", help="get lift cut, or set 0=1mm / 1=2mm")
+    p.add_argument("value", nargs="?", type=int, choices=(0, 1))
+    p = sub.add_parser("bio-acq", help="BIO acquisition on/off")
+    p.add_argument("value", type=int, choices=(0, 1))
+    p = sub.add_parser("bio-sleep", help="BIO sleep on/off")
+    p.add_argument("value", type=int, choices=(0, 1))
+    p = sub.add_parser("raw", help="send an arbitrary command with a hex payload")
+    p.add_argument("cmd", type=lambda s: int(s, 0))
+    p.add_argument("payload", nargs="*", help="payload bytes, e.g. 40 06")
+
+    opts = ap.parse_args()
+    if not opts.list and not opts.command:
+        ap.error("a command is required (or use --list)")
+    dev = open_device(opts)
+
+    try:
+        cmd = opts.command
+        if cmd == "version":
+            st, d = transact(dev, CMD_GET_VERSION, seq=opts.seq)
+            ok(st)
+            print(f"protocol {d[0]}  firmware {d[1]}.{d[2]}.{d[3]}")
+        elif cmd == "info":
+            st, d = transact(dev, CMD_GET_INFO, seq=opts.seq)
+            ok(st)
+            caps = u16(d)
+            print(f"capabilities {caps:#06x}  sensor={caps & 1} radio={(caps >> 1) & 1} "
+                  f"battery={(caps >> 2) & 1} bio={(caps >> 3) & 1}")
+        elif cmd == "radio":
+            st, d = transact(dev, CMD_GET_RADIO, seq=opts.seq)
+            ok(st)
+            print("radio", "ble" if d[0] else "rf")
+        elif cmd == "battery":
+            st, d = transact(dev, CMD_GET_BATTERY, seq=opts.seq)
+            ok(st)
+            print(f"{u16(d)} mV  {d[2]}%  charging={d[3] & 1} "
+                  f"power_good={(d[3] >> 1) & 1} fault={(d[3] >> 2) & 1}")
+        elif cmd == "dpi":
+            value = opts.value
+            if value is None:
+                st, d = transact(dev, CMD_GET_DPI, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_DPI, value.to_bytes(2, "little"), seq=opts.seq)
+            ok(st)
+            print(f"CPI {u16(d)}")
+        elif cmd == "sensor":
+            value = opts.value
+            if value is None:
+                st, d = transact(dev, CMD_GET_SENSOR, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_SENSOR, bytes([value]), seq=opts.seq)
+            ok(st)
+            print(f"sensor {d[0]} ({SENSOR_MODES[d[0]]})")
+        elif cmd == "lift":
+            value = opts.value
+            if value is None:
+                st, d = transact(dev, CMD_GET_LIFT, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_LIFT, bytes([value]), seq=opts.seq)
+            ok(st)
+            print(f"lift {d[0]} ({LIFT_CUTS[d[0]]})")
+        elif cmd == "bio-acq":
+            st, _ = transact(dev, CMD_BIO_ACQ, bytes([opts.value]), seq=opts.seq)
+            ok(st)
+            print("bio acquisition", "on" if opts.value else "off")
+        elif cmd == "bio-sleep":
+            st, _ = transact(dev, CMD_BIO_SLEEP, bytes([opts.value]), seq=opts.seq)
+            ok(st)
+            print("bio sleep", "on" if opts.value else "off")
+        elif cmd == "raw":
+            payload = bytes(int(b, 0) for b in opts.payload)
+            st, d = transact(dev, opts.cmd, payload, seq=opts.seq)
+            print(f"status {st:#04x} ({STATUS.get(st, '?')})  data {d.hex(' ')}")
+    finally:
+        dev.close()
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

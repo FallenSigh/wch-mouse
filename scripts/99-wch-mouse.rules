@@ -1,0 +1,20 @@
+# wch-mouse / wch-dongle: give the logged-in user access to the hidraw nodes.
+#
+# The kernel exposes HID interfaces as /dev/hidrawN owned by root:root with
+# mode 0600, so scripts/mouse_proto.py fails with "Permission denied" unless
+# it runs as root. This rule grants access instead.
+#
+# ATTRS matches the USB device behind the hidraw node, so one rule covers every
+# interface it exposes -- the mouse input collection, the vendor Feature
+# collection, and the dongle.
+#
+# Install:
+#   sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger --subsystem-match=hidraw
+# Re-plug the device if it is already attached.
+#
+# Note: 0x1a86 is WCH's vendor id (dev/prototype use); update the ids here if
+# the firmware's DEF_USB_VID / DEF_USB_PID change (src/bsp/usb_desc.h).
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe0c", MODE="0666", TAG+="uaccess"
