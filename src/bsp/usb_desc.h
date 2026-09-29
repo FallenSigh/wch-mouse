@@ -58,7 +58,9 @@
 #define DEF_USBD_DEVICE_DESC_LEN     ((uint8_t)MyDevDescr[0])
 #define DEF_USBD_CONFIG_FS_DESC_LEN  ((uint16_t)MyCfgDescr_FS[2] + (uint16_t)(MyCfgDescr_FS[3] << 8))
 #define DEF_USBD_CONFIG_HS_DESC_LEN  ((uint16_t)MyCfgDescr_HS[2] + (uint16_t)(MyCfgDescr_HS[3] << 8))
-#define DEF_MOUSE_REPORT_DESC_LEN    64  /* MyMouseReportDesc[] byte length */
+#define DEF_MOUSE_REPORT_DESC_LEN    85  /* sizeof(MyMouseReportDesc) */
+/* HID interface number in the configuration descriptor (CDC is 0/1). */
+#define DEF_USBD_HID_ITF             2
 #define DEF_USBD_LANG_DESC_LEN       ((uint16_t)MyLangDescr[0])
 #define DEF_USBD_MANU_DESC_LEN       ((uint16_t)MyManuInfo[0])
 #define DEF_USBD_PROD_DESC_LEN       ((uint16_t)MyProdInfo[0])

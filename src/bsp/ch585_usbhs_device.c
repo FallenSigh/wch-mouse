@@ -12,6 +12,7 @@
 
 #include "ch585_usbhs_device.h"
 #include "UART.h"
+#include "proto.h"
 
 /******************************************************************************/
 /* Variable Definition */
@@ -50,6 +51,22 @@ volatile uint8_t  USBHS_DevEnumStatus;
 volatile uint8_t USBHS_HidIdle;
 volatile uint8_t USBHS_HidProtocol;
 volatile uint16_t Hid_Report_Ptr;
+/* Set while a HID feature SET_REPORT transfer is in flight. */
+static volatile uint8_t Hid_FeatureSet;
+
+/* Weak defaults so the dongle build, which shares this file but has no
+ * protocol module, still links; the mouse's proto.c provides the real ones. */
+__attribute__((weak)) void proto_handle_set(const uint8_t *frame, uint16_t len)
+{
+    (void)frame;
+    (void)len;
+}
+
+__attribute__((weak)) void proto_handle_get(uint8_t *frame, uint16_t len)
+{
+    (void)frame;
+    (void)len;
+}
 
 /* HID Report Buffer */
 __attribute__ ((aligned(4))) uint8_t  HID_Report_Buffer[DEF_USBD_HS_PACK_SIZE];
@@ -324,15 +341,22 @@ void USB2_DEVICE_IRQHandler( void )
 
                                     case HID_SET_REPORT:                            /* 0x09: SET_REPORT */
                                         Hid_Report_Ptr = 0;
+                                        Hid_FeatureSet = (uint8_t)((USBHS_SetupReqIndex == DEF_USBD_HID_ITF) &&
+                                                                   ((USBHS_SetupReqValue >> 8) == 0x03));
                                         break;
 
                                     case HID_GET_REPORT:                            /* 0x01: GET_REPORT */
-                                        if( USBHS_SetupReqIndex == 0x00 )
+                                        /* Feature reports on the HID interface only:
+                                         * return whatever the last SET_REPORT left. */
+                                        if( (USBHS_SetupReqIndex == DEF_USBD_HID_ITF) &&
+                                            ((USBHS_SetupReqValue >> 8) == 0x03) )
                                         {
-                                            Hid_Report_Ptr = 0;
-                                            len = (USBHS_SetupReqLen >= DEF_USBD_UEP0_SIZE) ? DEF_USBD_UEP0_SIZE : USBHS_SetupReqLen;
-                                            memcpy( USBHS_EP0_Buf, &HID_Report_Buffer[Hid_Report_Ptr], len );
-                                            Hid_Report_Ptr += len;
+                                            proto_handle_get( HID_Report_Buffer, PROTO_FRAME_LEN );
+                                            pUSBHS_Descr = HID_Report_Buffer;
+                                            if( USBHS_SetupReqLen > PROTO_FRAME_LEN )
+                                            {
+                                                USBHS_SetupReqLen = PROTO_FRAME_LEN;
+                                            }
                                         }
                                         else
                                         {
@@ -873,8 +897,16 @@ void USB2_DEVICE_IRQHandler( void )
                             else if( USBHS_SetupReqCode == HID_SET_REPORT )
                             {
                                 memcpy(&HID_Report_Buffer[Hid_Report_Ptr],USBHS_EP0_Buf,len);
-                                USBHS_SetupReqLen -= len;
                                 Hid_Report_Ptr += len;
+
+                                /* The whole 63-byte frame arrives in this one
+                                 * control OUT packet, so run it now. */
+                                if( Hid_FeatureSet )
+                                {
+                                    Hid_FeatureSet = 0;
+                                    proto_handle_set( HID_Report_Buffer, Hid_Report_Ptr );
+                                }
+
                                 R8_U2EP0_RX_CTRL ^= USBHS_UEP_R_TOG_DATA1;
                                 R8_U2EP0_RX_CTRL = (R8_U2EP0_RX_CTRL & USBHS_UEP_R_TOG_MASK) | USBHS_UEP_R_RES_ACK;
                             }

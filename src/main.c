@@ -8,6 +8,7 @@
 #include "air_mouse.h"
 #include "motor.h"
 #include "bio.h"
+#include "proto.h"
 #include "rgb.h"
 #include "rgb_fx.h"
 #include "oled.h"
@@ -169,6 +170,7 @@ int main() {
     paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);
     paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
     paw3395_motion_start();
+    proto_init(&paw);
     bat_init();
 
     /* The IMU is only needed for air-mouse mode, so it stays with both sensors

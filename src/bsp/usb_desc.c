@@ -189,7 +189,26 @@ const uint8_t MyMouseReportDesc[] = {
 
     0xC0,               //   End Collection (Physical)
     0xC0,               // End Collection (Application)
+
+    /* Vendor-defined Feature report: the configuration/control channel.
+     * Deliberately no Report ID - the descriptor has a single input report and
+     * this is the single feature report, and an ID here would force one onto
+     * the mouse input too. 63 data bytes. */
+    0x06, 0x00, 0xFF,   // Usage Page (Vendor-Defined 0xFF00)
+    0x09, 0x01,         // Usage (0x01)
+    0xA1, 0x01,         // Collection (Application)
+    0x09, 0x01,         //   Usage (0x01)
+    0x15, 0x00,         //   Logical Minimum (0)
+    0x26, 0xFF, 0x00,   //   Logical Maximum (255)
+    0x75, 0x08,         //   Report Size (8)
+    0x95, 0x3F,         //   Report Count (63)
+    0xB1, 0x02,         //   Feature (Data,Var,Abs)
+    0xC0,               // End Collection
 };
+
+/* The HID descriptor's wDescriptorLength is a literal in usb_desc.h; keep it
+ * honest. */
+typedef char proto_report_desc_len_check[(sizeof(MyMouseReportDesc) == DEF_MOUSE_REPORT_DESC_LEN) ? 1 : -1];
 
 /* Language Descriptor */
 const uint8_t MyLangDescr[] = { 0x04, 0x03, 0x09, 0x04 };
