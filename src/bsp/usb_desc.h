@@ -20,7 +20,12 @@
 #define DEF_FILE_VERSION             0x01
 /* usb device info define  */
 #define DEF_USB_VID                  0x1A86
+/* The mouse and the dongle are separate products on the same vendor id, so the
+ * product id must differ: they are told apart by it (see the udev rule and the
+ * host-side tooling). The dongle overrides this from its own CMakeLists. */
+#ifndef DEF_USB_PID
 #define DEF_USB_PID                  0xFE0C
+#endif
 /* USB device descriptor, device serial number */
 #define DEF_IC_PRG_VER               DEF_FILE_VERSION
 

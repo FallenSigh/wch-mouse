@@ -20,6 +20,11 @@ add_executable(wch-dongle
 target_include_directories(wch-dongle PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# Same vendor id as the mouse, different product id: the two share usb_desc.h,
+# and the host tells them apart by the PID (host tooling and the udev rule key
+# off it). Change this single value to renumber the dongle.
+target_compile_definitions(wch-dongle PRIVATE DEF_USB_PID=0xFE0D)
+
 wch_firmware(wch-dongle "-dongle")
 
 # The dongle is always the RF host: radio HAL and library, but no GATT profile
