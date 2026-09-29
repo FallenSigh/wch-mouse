@@ -96,6 +96,7 @@ set(APP_SOURCES
     src/app/air_mouse.c
     src/app/bio.c
     src/app/proto.c
+    src/app/settings.c
     src/display/i2c_bus.c
     src/display/oled.c
     src/display/ssd1315_port.c

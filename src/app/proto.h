@@ -4,8 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-struct paw3395_dev;
-
 /* Vendor configuration channel over a HID Feature report (usage page 0xFF00,
  * no Report ID, 63 data bytes).
  *
@@ -24,8 +22,8 @@ struct paw3395_dev;
 
 #define PROTO_FRAME_LEN  63u
 
-/* Hand the protocol the sensor it may configure. */
-void proto_init(struct paw3395_dev *paw);
+/* Prepare the channel (the configuration lives in settings.c). */
+void proto_init(void);
 
 /* SET_FEATURE (host -> device): parse, execute, fill the pending response. */
 void proto_handle_set(const uint8_t *frame, uint16_t len);

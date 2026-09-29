@@ -9,6 +9,7 @@
 #include "motor.h"
 #include "bio.h"
 #include "proto.h"
+#include "settings.h"
 #include "rgb.h"
 #include "rgb_fx.h"
 #include "oled.h"
@@ -126,10 +127,6 @@ int main() {
      * even without a host because bio_rt_feed() parses them locally for the
      * OLED; only the USB CDC forwarding below is gated on USB. */
 
-    /* Start acquisition so the module streams real-time packets. Safe here:
-     * UART3 is up and bio_reset() has already let the module boot. */
-    bio_measure_enable();
-
     /* The USBHS PHY is now owned by transport_usb: it powers up only while
      * VBUS is present, so it does not burn 10-20 mA on battery. */
 
@@ -166,11 +163,14 @@ int main() {
     rgb_init();
     motor_init();
     paw3395_port_init(&paw);
-    paw3395_set_cpi(&paw, 800);
-    paw3395_set_mode(&paw, PAW3395_MODE_HIGH_PERFORMANCE);
-    paw3395_set_lift_cut(&paw, PAW3395_LIFT_CUT_2MM);
+
+    /* Restore the stored configuration (or the built-in defaults) before the
+     * PA7 motion interrupt is armed, then start reading the sensor. */
+    settings_init(&paw);
+    settings_apply();
     paw3395_motion_start();
-    proto_init(&paw);
+
+    proto_init();
     bat_init();
 
     /* The IMU is only needed for air-mouse mode, so it stays with both sensors
@@ -222,6 +222,7 @@ int main() {
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
+        settings_poll(s_tick_ms);
 
         /* BIO real-time screen: refresh only on a fresh packet (~1.28 s) and
          * only when it carries a real measurement, so the panel keeps showing

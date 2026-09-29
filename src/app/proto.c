@@ -13,8 +13,8 @@
 #include "bat.h"
 #include "bio.h"
 #include "paw3395.h"
-#include "paw3395_port.h"
 #include "radio_mode.h"
+#include "settings.h"
 
 #define PROTO_SUM_OFF(frame, len)  ((uint16_t)(3u + (len)))
 
@@ -41,8 +41,7 @@
 
 #define PROTO_VERSION         1u
 
-static struct paw3395_dev *s_paw;
-static uint8_t             s_resp[PROTO_FRAME_LEN];
+static uint8_t s_resp[PROTO_FRAME_LEN];
 
 static uint8_t proto_sum(const uint8_t *p, uint16_t n)
 {
@@ -73,20 +72,8 @@ static void proto_reply(uint8_t cmd, uint8_t seq, uint8_t status, const uint8_t 
     s_resp[PROTO_SUM_OFF(s_resp, plen)] = proto_sum(s_resp, PROTO_SUM_OFF(s_resp, plen));
 }
 
-/* Sensor writes are blocking SPI and share the bus with the PA7 motion ISR. */
-static void proto_sensor_write_begin(void)
+void proto_init(void)
 {
-    paw3395_motion_stop();
-}
-
-static void proto_sensor_write_end(void)
-{
-    paw3395_motion_start();
-}
-
-void proto_init(struct paw3395_dev *paw)
-{
-    s_paw = paw;
     proto_reply(PROTO_CMD_GET_VERSION, 0u, PROTO_ST_OK, NULL, 0u);
 }
 
@@ -135,7 +122,8 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
         }
 
         case PROTO_CMD_GET_DPI: {
-            const uint8_t data[2] = { (uint8_t)(s_paw->cpi & 0xFFu), (uint8_t)(s_paw->cpi >> 8) };
+            const uint16_t cpi = settings_get()->cpi;
+            const uint8_t  data[2] = { (uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8) };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -145,19 +133,17 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
                 proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
                 break;
             }
-            const uint16_t cpi = (uint16_t)(frame[3] | (frame[4] << 8));
 
-            proto_sensor_write_begin();
-            paw3395_set_cpi(s_paw, cpi);
-            proto_sensor_write_end();
+            settings_set_cpi((uint16_t)(frame[3] | (frame[4] << 8)));
 
-            const uint8_t data[2] = { (uint8_t)(s_paw->cpi & 0xFFu), (uint8_t)(s_paw->cpi >> 8) };
+            const uint16_t cpi = settings_get()->cpi;
+            const uint8_t  data[2] = { (uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8) };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
 
         case PROTO_CMD_GET_SENSOR: {
-            const uint8_t data[1] = { (uint8_t)s_paw->mode };
+            const uint8_t data[1] = { settings_get()->sensor_mode };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -167,24 +153,21 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
                 proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
                 break;
             }
-            const uint8_t mode = frame[3];
 
-            if (mode >= (uint8_t)PAW3395_MODE_COUNT) {
+            if (frame[3] >= (uint8_t)PAW3395_MODE_COUNT) {
                 proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
                 break;
             }
 
-            proto_sensor_write_begin();
-            paw3395_set_mode(s_paw, (enum paw3395_mode)mode);
-            proto_sensor_write_end();
+            settings_set_mode(frame[3]);
 
-            const uint8_t data[1] = { (uint8_t)s_paw->mode };
+            const uint8_t data[1] = { settings_get()->sensor_mode };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
 
         case PROTO_CMD_GET_LIFT: {
-            const uint8_t data[1] = { (uint8_t)s_paw->lift_cut };
+            const uint8_t data[1] = { settings_get()->lift_cut };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -194,18 +177,15 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
                 proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
                 break;
             }
-            const uint8_t cut = frame[3];
 
-            if (cut > (uint8_t)PAW3395_LIFT_CUT_2MM) {
+            if (frame[3] > (uint8_t)PAW3395_LIFT_CUT_2MM) {
                 proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
                 break;
             }
 
-            proto_sensor_write_begin();
-            paw3395_set_lift_cut(s_paw, (enum paw3395_lift_cut)cut);
-            proto_sensor_write_end();
+            settings_set_lift(frame[3]);
 
-            const uint8_t data[1] = { (uint8_t)s_paw->lift_cut };
+            const uint8_t data[1] = { settings_get()->lift_cut };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -230,25 +210,25 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             break;
         }
 
-        case PROTO_CMD_BIO_ACQ:
+        case PROTO_CMD_BIO_ACQ: {
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+            settings_set_bio(frame[3]);
+            proto_reply(cmd, seq, PROTO_ST_OK, NULL, 0u);
+            break;
+        }
+
         case PROTO_CMD_BIO_SLEEP: {
             if (plen < 1u) {
                 proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
                 break;
             }
-
-            if (cmd == PROTO_CMD_BIO_ACQ) {
-                if (frame[3] != 0u) {
-                    bio_measure_enable();
-                } else {
-                    bio_measure_disable();
-                }
+            if (frame[3] != 0u) {
+                bio_sleep_enable();
             } else {
-                if (frame[3] != 0u) {
-                    bio_sleep_enable();
-                } else {
-                    bio_sleep_disable();
-                }
+                bio_sleep_disable();
             }
             proto_reply(cmd, seq, PROTO_ST_OK, NULL, 0u);
             break;
