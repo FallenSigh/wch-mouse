@@ -61,6 +61,7 @@ bool paw3395_motion_ready(void) {
 /* --- IRQ-driven motion burst -------------------------------------------- */
 
 static volatile bool    s_motion_on;
+static volatile bool    s_motion_parked;
 static volatile int32_t s_motion_dx;
 static volatile int32_t s_motion_dy;
 static __attribute__((aligned(4))) uint8_t s_motion_buf[PAW3395_MOTION_BURST_LEN];
@@ -82,17 +83,27 @@ static void paw3395_motion_burst(void) {
     s_motion_dy += dy;
 }
 
-__INTERRUPT void GPIOA_IRQHandler(void) {
+/* Runs from RAM: in standby this fires as the wake-up event, at a point where
+ * the flash and the 32M clock are still down, so nothing here may execute from
+ * flash. */
+__INTERRUPT __HIGH_CODE void GPIOA_IRQHandler(void) {
     if (R16_PA_INT_IF & PIN_MS_MOTION_ALT) {
         R16_PA_INT_IF = PIN_MS_MOTION_ALT;   /* RW1: clear */
 
-        if (s_motion_on) {
+        /* Parked: record only. The burst needs the SPI bus and the flash, and
+         * neither is up yet - paw3395_motion_start() picks the sample up. */
+        if (s_motion_on && !s_motion_parked) {
             paw3395_motion_burst();
         }
     }
 }
 
+void paw3395_motion_park(void) {
+    s_motion_parked = true;
+}
+
 void paw3395_motion_start(void) {
+    s_motion_parked = false;
     s_motion_dx = 0;
     s_motion_dy = 0;
     s_motion_on = false;

@@ -21,6 +21,11 @@ bool paw3395_motion_ready(void);
 void paw3395_motion_start(void);
 void paw3395_motion_stop(void);
 
+/* Standby park. While parked the ISR only records that motion happened: it runs
+ * with the flash still powered down, so it must not touch the SPI bus.
+ * paw3395_motion_start() unparks and drains whatever the wake held back. */
+void paw3395_motion_park(void);
+
 /* Drain the accumulated raw delta since the last call, topping the DMA pipeline
  * up if the pin is still asserted. Safe to call every scan with no motion. */
 void paw3395_motion_read(int16_t *dx, int16_t *dy);

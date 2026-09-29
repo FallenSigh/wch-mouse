@@ -7,6 +7,7 @@
 #include "mouse.h"
 #include "air_mouse.h"
 #include "motor.h"
+#include "power.h"
 #include "bio.h"
 #include "proto.h"
 #include "settings.h"
@@ -28,7 +29,17 @@
 #include "HAL.h"
 #endif
 
-static volatile uint32_t s_tick_ms;
+/* The base tick follows the active link. A USB host polls the HID endpoint at
+ * 8 kHz and can consume everything; BLE is limited by its connection interval
+ * (7.5-10 ms), where an 8 kHz tick would only stop the core from ever idling.
+ * 1 kHz is the floor: the millisecond clock is derived from the tick. */
+#define TICK_HZ_FAST  8000u
+#define TICK_HZ_SLOW  1000u
+
+static volatile uint32_t s_tick;         /* s_tick_hz units */
+static volatile uint32_t s_tick_ms;      /* milliseconds    */
+static volatile uint32_t s_ticks_per_ms;
+static uint32_t          s_tick_hz;
 
 #ifdef WCH_DCDC_ENABLE
 /* Factory hardware-config word, read before PWR_DCDCCfg() so we can report
@@ -49,13 +60,38 @@ __attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
 __INTERRUPT void TMR3_IRQHandler() {
     if (TMR3_GetITFlag(TMR0_3_IT_CYC_END)) {
         TMR3_ClearITFlag(TMR0_3_IT_CYC_END);
-        s_tick_ms++;
+        if ((++s_tick % s_ticks_per_ms) == 0u) {
+            s_tick_ms++;
+        }
     }
 }
 
 /* Millisecond clock handed to the logger for line timestamps. */
 static uint32_t tick_ms(void) {
     return s_tick_ms;
+}
+
+/* Restart TIM3 at the current base rate. Needed after a standby cycle, where
+ * the core clock and the timer both stopped. */
+static void tick_rearm(void)
+{
+    TMR3_TimerInit(FREQ_SYS / s_tick_hz);
+    TMR3_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
+    PFIC_EnableIRQ(TMR3_IRQn);
+}
+
+/* s_tick is never reset, so the report cadence keeps its phase across a link
+ * change instead of firing immediately on the new rate. */
+static void tick_set_rate(uint32_t hz)
+{
+    if (hz == s_tick_hz) {
+        return;
+    }
+
+    s_tick_hz      = hz;
+    s_ticks_per_ms = hz / 1000u;
+
+    tick_rearm();
 }
 
 static struct paw3395_dev paw;
@@ -78,7 +114,7 @@ int main() {
     PWR_DCDCCfg(ENABLE);
 #endif
 
-    HSECFG_Capacitance(HSECap_2p);
+    HSECFG_Capacitance(HSECap_12p);
     SetSysClock(SYSCLK_FREQ);
 
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
@@ -139,11 +175,11 @@ int main() {
      * needs during enumeration and USB would never take over. */
     settings_init(&paw);
 
-    if (settings_get()->oled_enable != 0u) {
-        if (oled_set_enable(true)) {
-            oled_demo();
-        }
-    }
+    /* The panel, the LED rail and the BIO module only run while tethered, so
+     * this applies that policy here - before the USB device layer, because the
+     * panel bring-up blocks long enough to starve the SETUP handling that
+     * enumeration needs. */
+    settings_apply_peripherals();
 
 #ifdef WCH_BLE_ENABLE
     /* Registering the GAP role must happen before the main loop pumps TMOS:
@@ -158,14 +194,16 @@ int main() {
 
     transport_router_init();
 
-    /* TIM3 at 1 kHz for the mouse tick. TIM0 is reserved for the RF transport,
-     * and TIM3 is free here because the BLE HAL only claims TMR3_IRQHandler
-     * when RF_8K is defined (we don't use the 8k RF mode). */
-    TMR3_TimerInit(FREQ_SYS / 1000);
-    TMR3_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
-    PFIC_EnableIRQ(TMR3_IRQn);
+    /* TIM3 drives both the ms clock and the report cadence. TIM0 is reserved for
+     * the RF transport, and TIM3 is free here because the BLE HAL only claims
+     * TMR3_IRQHandler when RF_8K is defined (we don't use it). The rate itself
+     * follows the active link and is picked in the main loop. */
+    tick_set_rate(TICK_HZ_FAST);
 
     rgb_init();
+    /* rgb_init() leaves the LED rail powered; the rail is dropped from the
+     * product, so cut it once here and let rgb_fx_poll() keep it off. */
+    rgb_set_enable(false);
     motor_init();
     paw3395_port_init(&paw);
 
@@ -173,6 +211,8 @@ int main() {
      * then start reading the sensor. */
     settings_apply();
     paw3395_motion_start();
+
+    power_init(&paw);
 
     proto_init();
     bat_init();
@@ -220,7 +260,55 @@ int main() {
             CDC.Uart_Output_Ptr = 0;
         }
 
-        mouse_scan(s_tick_ms);
+        /* Both the base tick and the report cadence follow the active link: the
+         * USB-oriented setting must not drive the scan loop over BLE, whose
+         * ceiling is the connection interval. */
+        const transport_id_t link = transport_router_active();
+
+        tick_set_rate((link == TR_BLE) ? TICK_HZ_SLOW : TICK_HZ_FAST);
+
+        {
+            static uint32_t last_report_tick;
+            uint32_t        rate;
+            uint32_t        div;
+
+            /* Each link keeps its own persisted rate: the unsuffixed pair is the
+             * USB one, RF and BLE have their own. */
+            if (link == TR_BLE) {
+                rate = settings_report_hz_ble();
+            } else if (link == TR_RF24) {
+                rate = settings_report_hz_rf();
+            } else {
+                rate = settings_report_hz();
+            }
+
+            div = s_tick_hz / rate;
+
+            if (div == 0u) {
+                div = 1u;
+            }
+
+            if ((uint32_t)(s_tick - last_report_tick) >= div) {
+                /* Advance by whole periods only: resetting to s_tick would throw
+                 * away the remainder and degrade the cadence to one scan per
+                 * loop iteration (6300/s instead of the requested 4000/s). */
+                last_report_tick += ((s_tick - last_report_tick) / div) * div;
+                mouse_scan(s_tick_ms);
+            }
+        }
+
+        /* Standby: parks the peripherals and sleeps the MCU once the input has
+         * been quiet long enough. Waking restores the system clock and the
+         * flash, so everything derived from them is re-armed right here. */
+        if (power_poll(s_tick_ms)) {
+            tick_rearm();
+
+            TMR2_TimerInit(FREQ_SYS / 10000);
+            TMR2_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
+            PFIC_EnableIRQ(TMR2_IRQn);
+
+            UART3_Init(1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY);
+        }
 
         radio_mode_poll(s_tick_ms);
         transport_router_poll(s_tick_ms);
@@ -239,9 +327,21 @@ int main() {
                 bio_rt_pack_t pkt;
 
                 last_rt_seq = rt_seq;
-                if (bio_rt_read(&pkt) && bio_rt_pack_valid(&pkt)) {
+                if (oled_enabled() && bio_rt_read(&pkt) && bio_rt_pack_valid(&pkt)) {
                     oled_bio_show(pkt.heartrate, pkt.spo2, pkt.bk, pkt.sdnn);
                 }
+            }
+        }
+
+        /* Keep the battery gauge up when no BIO packet is being drawn: it is
+         * the only thing on an otherwise blank panel. One full flush a second,
+         * which is the cost of having it there without BIO data. */
+        {
+            static uint32_t last_volt_ms;
+
+            if (oled_enabled() && ((uint32_t)(s_tick_ms - last_volt_ms) >= 1000u)) {
+                last_volt_ms = s_tick_ms;
+                (void)oled_show_voltage();
             }
         }
 

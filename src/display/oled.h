@@ -29,4 +29,8 @@ void oled_demo(void);
  * SpO2, microcirculation and HRV (sdnn). Redraws and flushes the panel. */
 bool oled_bio_show(uint8_t heartrate, uint8_t spo2, uint8_t bk, uint8_t hrv);
 
+/* Redraw just the battery gauge in the top-right corner. Needed when no BIO
+ * screen is being drawn, where the panel would otherwise stay blank. */
+bool oled_show_voltage(void);
+
 #endif /* __OLED_H__ */

@@ -50,6 +50,8 @@ CMD_GET_RGB = 0x30
 CMD_SET_RGB = 0x31
 CMD_GET_OLED = 0x40
 CMD_SET_OLED = 0x41
+CMD_GET_RATE = 0x42
+CMD_SET_RATE = 0x43
 CMD_BIO_ACQ = 0x50
 CMD_BIO_SLEEP = 0x51
 
@@ -63,6 +65,9 @@ STATUS = {
 
 SENSOR_MODES = ("high-performance", "low-power", "office", "corded-gaming")
 LIFT_CUTS = ("1mm", "2mm")
+RATES = (125, 250, 500, 1000, 2000, 4000, 8000)
+# The rate command's first payload byte selects the link (src/app/proto.c).
+LINKS = {"usb": 0, "rf": 1, "ble": 2}
 
 
 def build_frame(cmd: int, seq: int, payload: bytes = b"") -> bytes:
@@ -176,6 +181,10 @@ def main() -> int:
     p.add_argument("--color", help="solid colour, RRGGBB")
     p = sub.add_parser("oled", help="get the panel state, or set on/off")
     p.add_argument("value", nargs="?", type=int, choices=(0, 1))
+    p = sub.add_parser("rate", help=f"get the report rate in Hz, or set one of {RATES}")
+    p.add_argument("value", nargs="?", type=int, help="report rate in Hz (snaps to the nearest)")
+    p.add_argument("--link", choices=tuple(LINKS), default="usb",
+                   help="which link's rate to get/set (default: usb)")
     p = sub.add_parser("bio-acq", help="BIO acquisition on/off")
     p.add_argument("value", type=int, choices=(0, 1))
     p = sub.add_parser("bio-sleep", help="BIO sleep on/off")
@@ -266,6 +275,15 @@ def main() -> int:
                 st, d = transact(dev, CMD_SET_OLED, bytes([opts.value]), seq=opts.seq)
             ok(st)
             print("oled", "on" if d[0] else "off")
+        elif cmd == "rate":
+            link = bytes([LINKS[opts.link]])
+            if opts.value is None:
+                st, d = transact(dev, CMD_GET_RATE, link, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_RATE, link + opts.value.to_bytes(2, "little"),
+                                 seq=opts.seq)
+            ok(st)
+            print(f"report rate {u16(d)} Hz ({opts.link})")
         elif cmd == "bio-acq":
             st, _ = transact(dev, CMD_BIO_ACQ, bytes([opts.value]), seq=opts.seq)
             ok(st)

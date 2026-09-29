@@ -95,6 +95,7 @@ set(APP_SOURCES
     src/app/mouse.c
     src/app/air_mouse.c
     src/app/bio.c
+    src/app/power.c
     src/app/proto.c
     src/app/settings.c
     src/display/i2c_bus.c

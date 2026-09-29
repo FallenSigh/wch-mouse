@@ -8,10 +8,10 @@
  */
 
 #include "oled.h"
-
 #include <stdio.h>
 
 #include "CH58x_common.h"
+#include "bat.h"
 #include "driver_ssd1315.h"
 #include "driver_ssd1315_interface.h"
 #include "i2c_bus.h"
@@ -201,6 +201,41 @@ bool oled_flush(void)
     return true;
 }
 
+/* Write only the pages and columns a partial update touched. The panel is in
+ * page-addressing mode: setting the page plus the column start is enough, the
+ * controller auto-increments from there - the same mechanism oled_flush() uses
+ * to walk the whole screen, just aimed at one rectangle. */
+static bool oled_flush_rect(uint8_t left, uint8_t top, uint8_t right, uint8_t bottom)
+{
+    uint8_t       row[OLED_WIDTH];
+    const uint8_t first = (uint8_t)(top / 8u);
+    const uint8_t last  = (uint8_t)(bottom / 8u);
+    const uint8_t n     = (uint8_t)(right - left + 1u);
+
+    if (!s_ready || (right >= OLED_WIDTH) || (bottom >= OLED_HEIGHT) || (left > right) ||
+        (top > bottom)) {
+        return false;
+    }
+
+    for (uint8_t page = first; page <= last; page++) {
+        if (!oled_cmd((uint8_t)(SSD1315_CMD_PAGE | page)) ||
+            !oled_cmd((uint8_t)(SSD1315_CMD_COL_LOW | (left & 0x0Fu))) ||
+            !oled_cmd((uint8_t)(SSD1315_CMD_COL_HIGH | (left >> 4)))) {
+            return false;
+        }
+
+        for (uint8_t i = 0u; i < n; i++) {
+            row[i] = s_oled.gram[left + i][page];
+        }
+
+        if (!i2c_bus_write_reg(OLED_IIC_ADDR_7BIT, SSD1315_CTRL_DATA, row, n)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool oled_text(uint8_t x, uint8_t y, const char *str)
 {
     uint16_t len = 0u;
@@ -257,6 +292,33 @@ static bool oled_text_small(uint8_t x, uint8_t y, const char *str)
     return ssd1315_gram_write_string(&s_oled, x, y, (char *)str, len, 1u, SSD1315_FONT_12) == 0u;
 }
 
+/* Battery gauge for the top-right corner: the screen's lines are short, so the
+ * right of the first row is free. Draw only - the caller decides when to flush
+ * so the periodic refresh and the BIO screen can share it. */
+static void oled_voltage_draw(void)
+{
+    char           line[12];
+    const uint16_t mv = bat_voltage_mv();
+
+    (void)snprintf(line, sizeof(line), "%u.%02uV", (unsigned)(mv / 1000u),
+                   (unsigned)((mv % 1000u) / 10u));
+    (void)oled_text_small(90u, 0u, line);
+}
+
+bool oled_show_voltage(void)
+{
+    if (!s_ready) {
+        return false;
+    }
+
+    oled_voltage_draw();
+
+    /* Only the gauge's own rectangle ("NN.NNV" at x=90,y=0 spans 2 pages): a
+     * full flush would block the report path for ~24 ms every second, this is
+     * ~2 ms. */
+    return oled_flush_rect(90u, 0u, 127u, 15u);
+}
+
 bool oled_bio_show(uint8_t heartrate, uint8_t spo2, uint8_t bk, uint8_t hrv)
 {
     char line[20];
@@ -275,6 +337,8 @@ bool oled_bio_show(uint8_t heartrate, uint8_t spo2, uint8_t bk, uint8_t hrv)
     (void)oled_text_small(2u, 32u, line);
     (void)snprintf(line, sizeof(line), "HRV %u", (unsigned)hrv);
     (void)oled_text_small(2u, 48u, line);
+
+    oled_voltage_draw();
 
     return oled_flush();
 }

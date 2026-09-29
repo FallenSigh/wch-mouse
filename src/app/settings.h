@@ -23,6 +23,9 @@ typedef struct __attribute__((packed)) {
     uint8_t  rgb_g;
     uint8_t  rgb_b;
     uint8_t  oled_enable;   /* 0/1                  */
+    uint8_t  report_rate_idx;
+    uint8_t  report_rate_rf_idx;
+    uint8_t  report_rate_ble_idx;
 } settings_t;
 
 void settings_init(struct paw3395_dev *paw);
@@ -30,6 +33,12 @@ const settings_t *settings_get(void);
 
 /* Write the whole record to the sensor and the BIO module (boot path). */
 void settings_apply(void);
+
+/* Apply the panel / LED rail / BIO module policy: all three only run while the
+ * cable is in, because they are the biggest standing loads and tethered means
+ * there is no battery to protect. Call at boot (before the USB device layer,
+ * the panel bring-up blocks), on a VBUS change and on a config change. */
+void settings_apply_peripherals(void);
 
 /* Field updates: apply to the hardware now, persist after they settle. */
 void settings_set_cpi(uint16_t cpi);
@@ -39,6 +48,18 @@ void settings_set_bio(uint8_t on);
 void settings_set_rgb(uint8_t enable, uint8_t effect, uint8_t brightness,
                       uint8_t r, uint8_t g, uint8_t b);
 void settings_set_oled(uint8_t on);
+
+/* Report rate, one per link. Each is set and persisted independently, so
+ * switching radio modes keeps every link's own rate. The unsuffixed pair
+ * addresses the USB link and stays the default the host tools use. */
+uint16_t settings_report_hz(void);
+void     settings_set_report_hz(uint16_t hz);
+
+uint16_t settings_report_hz_rf(void);
+void     settings_set_report_hz_rf(uint16_t hz);
+
+uint16_t settings_report_hz_ble(void);
+void     settings_set_report_hz_ble(uint16_t hz);
 
 /* Flush a dirty record to DataFlash. Call from the main loop. */
 void settings_poll(uint32_t now_ms);

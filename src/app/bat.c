@@ -12,7 +12,7 @@
 #define BAT_DIVIDER     2u              /* BT_VOL = VBAT / 2 */
 
 #define BAT_POLL_MS     1000u            
-#define BAT_VOL_DIV     10u             /* sample VBAT every 10 polls */
+#define BAT_VOL_DIV     1u             /* sample VBAT every 10 polls */
 #define BAT_WINDOW_MS   1000u
 #define BAT_FAULT_EDGES 2u              /* >= 2 CHG edges/s means a fault */
 #define BAT_LOG_MS      5000u
@@ -127,7 +127,25 @@ void bat_poll(uint32_t now_ms)
     }
 }
 
-bool bat_power_good(void)      { return s_pgood != 0u; }
+/* TEMPORARY BENCH OVERRIDE - remove before shipping.
+ *
+ * With this set the firmware always reports "no cable", so a board powered from
+ * a USB current meter behaves exactly as it does on battery: the USBHS PHY
+ * stays off, the panel / LED rail / BIO module stay off and the standby engages
+ * after the idle timeout. Without it a USB-powered board reads the PHY and the
+ * peripherals (tens of mA) instead of the sleep state.
+ *
+ * Side effects while set: charging is not detected and the USB host path never
+ * comes up. Set to 0 to restore normal behaviour. */
+#define BAT_BENCH_FAKE_UNPLUGGED 0
+
+bool bat_power_good(void)      {
+#if BAT_BENCH_FAKE_UNPLUGGED
+    return false;
+#else
+    return s_pgood != 0u;
+#endif
+}
 bool bat_charging(void)        { return s_charging != 0u; }
 bool bat_charge_fault(void)    { return s_fault != 0u; }
 uint16_t bat_voltage_mv(void)  { return s_mv; }

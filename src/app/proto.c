@@ -30,9 +30,11 @@
 #define PROTO_CMD_SET_LIFT      0x15u
 #define PROTO_CMD_GET_RGB       0x30u
 #define PROTO_CMD_SET_RGB       0x31u
-#define PROTO_CMD_GET_OLED      0x40u
-#define PROTO_CMD_SET_OLED      0x41u
-#define PROTO_CMD_GET_BATTERY   0x24u
+#define PROTO_CMD_GET_OLED    0x40u
+#define PROTO_CMD_SET_OLED    0x41u
+#define PROTO_CMD_GET_RATE    0x42u
+#define PROTO_CMD_SET_RATE    0x43u
+#define PROTO_CMD_GET_BATTERY 0x24u
 #define PROTO_CMD_BIO_ACQ       0x50u
 #define PROTO_CMD_BIO_SLEEP     0x51u
 
@@ -236,6 +238,52 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             settings_set_oled(frame[3]);
 
             const uint8_t data[1] = { settings_get()->oled_enable };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        /* Report rate in Hz. The first payload byte picks the link: 0 USB, 1 RF,
+         * 2 BLE. The setter snaps to the nearest supported rate. */
+        case PROTO_CMD_GET_RATE: {
+            uint16_t hz;
+
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            hz = (frame[3] == 1u) ? settings_report_hz_rf()
+               : (frame[3] == 2u) ? settings_report_hz_ble() : settings_report_hz();
+
+            const uint8_t data[2] = { (uint8_t)(hz & 0xFFu), (uint8_t)(hz >> 8) };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_RATE: {
+            uint8_t  link;
+            uint16_t hz;
+
+            if (plen < 3u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            link = frame[3];
+            hz   = (uint16_t)(frame[4] | (frame[5] << 8));
+
+            if (link == 1u) {
+                settings_set_report_hz_rf(hz);
+            } else if (link == 2u) {
+                settings_set_report_hz_ble(hz);
+            } else {
+                settings_set_report_hz(hz);
+            }
+
+            hz = (link == 1u) ? settings_report_hz_rf()
+               : (link == 2u) ? settings_report_hz_ble() : settings_report_hz();
+
+            const uint8_t data[2] = { (uint8_t)(hz & 0xFFu), (uint8_t)(hz >> 8) };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }

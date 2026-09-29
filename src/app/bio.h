@@ -24,6 +24,10 @@ void bio_measure_enable(void);
 void bio_measure_disable(void);
 void bio_sleep_enable(void);
 void bio_sleep_disable(void);
+
+/* Time the module needs after a sleep-off before it will accept another
+ * command; sending one straight after the wake byte loses it. */
+#define BIO_WAKE_DELAY_MS 200u
 void bio_checkup_enable(void);
 void bio_checkup_disable(void);
 
