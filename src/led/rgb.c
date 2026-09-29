@@ -47,6 +47,9 @@ static __attribute__((aligned(4))) uint32_t s_bitbuf[RGB_BITBUF_LEN];
 static uint8_t  s_color[RGB_LED_COUNT * 3];   /* GRB, one byte per channel */
 static uint8_t  s_brightness = 255;          /* 0..255, applied at fill time */
 
+/* Set by rgb_show()/rgb_set_enable(), consumed by rgb_poll(). */
+static volatile bool s_dirty;
+
 /* Scale an 8-bit colour byte by the current brightness, with rounding so
  * 255 stays 255 instead of dropping to 254 after /255. */
 static inline uint8_t apply_brightness(uint8_t v)
@@ -84,7 +87,7 @@ void rgb_init(void)
     /* Configure the data pin for the timer to drive; enable the rail. */
     GPIOB_ModeCfg(RGB_DIN_PIN, GPIO_ModeOut_PP_5mA);
     GPIOB_ModeCfg(RGB_EN_PIN,  GPIO_ModeOut_PP_5mA);
-    rgb_set_enable(true);
+    GPIOB_SetBits(RGB_EN_PIN);
 
     memset(s_color, 0, sizeof(s_color));
     s_brightness = 255;
@@ -119,7 +122,21 @@ void rgb_set_enable(bool on)
 {
     if (on) {
         GPIOB_SetBits(RGB_EN_PIN);
+        /* Re-arm the frame DMA so the chain is clocked again. */
+        TMR1_DMACfg(ENABLE,
+                    (uint32_t)s_bitbuf,
+                    (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
+                    Mode_LOOP);
+        s_dirty = true;
     } else {
+        /* A WS2812 whose VDD is cut but whose data line is still being driven
+         * keeps glowing faintly through the data pin's clamp diodes. So park
+         * the line low - stop the DMA and force CCR to 0, where the timer's
+         * active-high output never fires - before cutting the rail. */
+        memset(s_color, 0, sizeof(s_color));
+        TMR1_DMACfg(DISABLE, 0u, 0u, Mode_LOOP);
+        TMR1_PWMActDataWidth(0u);
+        s_dirty = false;
         GPIOB_ResetBits(RGB_EN_PIN);
     }
 }
@@ -143,9 +160,6 @@ void rgb_set_all(uint8_t r, uint8_t g, uint8_t b)
 {
     for (uint8_t i = 0; i < RGB_LED_COUNT; i++) rgb_set_pixel(i, r, g, b);
 }
-
-/* Set by rgb_show(), consumed by rgb_poll(). */
-static volatile bool s_dirty;
 
 void rgb_show(void)
 {
