@@ -129,11 +129,15 @@ void rgb_set_enable(bool on)
                     Mode_LOOP);
         s_dirty = true;
     } else {
-        /* A WS2812 whose VDD is cut but whose data line is still being driven
-         * keeps glowing faintly through the data pin's clamp diodes. So park
-         * the line low - stop the DMA and force CCR to 0, where the timer's
-         * active-high output never fires - before cutting the rail. */
+        /* A WS2812 shows whatever frame it latched last for as long as it has
+         * power, so clearing the colour buffer and stopping the DMA on its own
+         * leaves the old colour lit. Clock one black frame into the chain
+         * first, then park the line low (stop the DMA and force CCR to 0, where
+         * the timer's active-high output never fires) and cut the rail. */
         memset(s_color, 0, sizeof(s_color));
+        fill_bitbuf();
+        mDelayuS(2000u);            /* one frame + reset tail, any chain length */
+
         TMR1_DMACfg(DISABLE, 0u, 0u, Mode_LOOP);
         TMR1_PWMActDataWidth(0u);
         s_dirty = false;
