@@ -17,7 +17,15 @@
 #define BAT_FAULT_EDGES 2u              /* >= 2 CHG edges/s means a fault */
 #define BAT_LOG_MS      5000u
 
+/* The cable level is sampled on every pass and has to hold this long before it
+ * is believed. Sampling it once a second let a marginal contact hold a wrong
+ * level for a whole second, which the peripheral policy and usb_ready() both
+ * act on. */
+#define BAT_VBUS_DEBOUNCE_MS 50u
+
 static uint8_t  s_pgood;
+static uint8_t  s_pgood_raw;
+static uint32_t s_pgood_raw_ms;
 static uint8_t  s_charging;
 static uint8_t  s_chg_prev;
 static uint8_t  s_edge_count;
@@ -80,6 +88,18 @@ void bat_init(void)
 
 void bat_poll(uint32_t now_ms)
 {
+    /* Ahead of the 1 s gate: this is the one signal the policy, the standby
+     * guard and usb_ready() all hang off. */
+    const uint8_t pgood = GPIOB_ReadPortPin(PIN_BAT_PGOOD) ? 0u : 1u;
+
+    if (pgood != s_pgood_raw) {
+        s_pgood_raw    = pgood;
+        s_pgood_raw_ms = now_ms;
+    } else if ((pgood != s_pgood) && ((now_ms - s_pgood_raw_ms) >= BAT_VBUS_DEBOUNCE_MS)) {
+        s_pgood = pgood;
+        LOG_I("BAT", "power %s", pgood ? "present" : "absent");
+    }
+
     if (now_ms - s_last_poll_ms < BAT_POLL_MS) {
         return;
     }
@@ -105,12 +125,6 @@ void bat_poll(uint32_t now_ms)
     if (!s_fault && chg != s_charging) {
         s_charging = chg;
         LOG_I("BAT", "charging %s", chg ? "started" : "stopped");
-    }
-
-    uint8_t pgood = GPIOB_ReadPortPin(PIN_BAT_PGOOD) ? 0u : 1u;
-    if (pgood != s_pgood) {
-        s_pgood = pgood;
-        LOG_I("BAT", "power %s", pgood ? "present" : "absent");
     }
 
     if (++s_vol_div >= BAT_VOL_DIV) {
