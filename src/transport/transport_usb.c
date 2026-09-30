@@ -93,9 +93,30 @@ static bool usb_init(void)
 
 static void usb_poll(uint32_t now_ms)
 {
+    /* A host that is really there takes a report every period, so if nothing has
+     * been accepted for this long the "enumerated" state is stale. This matters
+     * because USBHS_DevEnumStatus is only ever cleared by a bus reset: a cable
+     * drop whose VBUS edge was missed would otherwise leave us claiming a link
+     * that is gone, and every report would go into the void. */
+    static uint32_t       ok_seen;
+    static uint32_t       ok_ms;
+    static const uint32_t stale_ms = 100u;
+
     const bool vbus     = bat_power_good();
     const bool usb_owns = (transport_router_active() == TR_USB);
     const bool ble_owns = (transport_router_active() == TR_BLE);
+
+    if (s_tx_ok != ok_seen) {
+        ok_seen = s_tx_ok;
+        ok_ms   = now_ms;
+    } else if (!usb_owns) {
+        ok_ms = now_ms;                 /* not our link, so not stale */
+    } else if ((uint32_t)(now_ms - ok_ms) >= stale_ms) {
+        LOG_W("USB", "nothing accepted in %u ms, dropping device state",
+              (unsigned)stale_ms);
+        usb_forget();
+        ok_ms = now_ms;
+    }
 
     /* A fresh VBUS (re-)plug while the radio owns the mouse: keep the PHY up
      * briefly so a host attached to that cable can still enumerate and take
