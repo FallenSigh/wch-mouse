@@ -90,7 +90,6 @@ static void rgb_fx_hue(uint16_t hue)
 
 void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
 {
-    static bool     s_rail_on;
     static bool     s_air_prev;
     static uint32_t s_flash_until;
     bool            transient;
@@ -118,15 +117,13 @@ void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
                  || switch_armed);
 
     if (!s_cfg.enable && !transient) {
-        if (s_rail_on) {
-            s_rail_on = false;
+        if (rgb_rail_enabled()) {
             rgb_set_enable(false);
         }
         return;
     }
 
-    if (!s_rail_on) {
-        s_rail_on = true;
+    if (!rgb_rail_enabled()) {
         rgb_set_enable(true);
     }
 

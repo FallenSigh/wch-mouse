@@ -46,6 +46,10 @@ void rgb_poll(uint32_t now_ms);
  * the TIM/DMA keep running, so turning it back on resumes the last frame. */
 void rgb_set_enable(bool on);
 
+/* True while the rail (PB2) is powered. This is the rail's single source of
+ * truth, so a caller that cut it directly (standby_park) is always seen. */
+bool rgb_rail_enabled(void);
+
 void rgb_off(void);
 void rgb_set_pixel(uint8_t i, uint8_t r, uint8_t g, uint8_t b);
 void rgb_set_all(uint8_t r, uint8_t g, uint8_t b);

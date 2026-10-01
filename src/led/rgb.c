@@ -50,6 +50,11 @@ static uint8_t  s_brightness = 255;          /* 0..255, applied at fill time */
 /* Set by rgb_show()/rgb_set_enable(), consumed by rgb_poll(). */
 static volatile bool s_dirty;
 
+/* The single source of truth for the LED rail (PB2). rgb_set_enable() owns it
+ * and rgb_rail_enabled() exposes it, so callers that cut the rail directly
+ * (standby_park) cannot desync a separate "did I turn it on?" flag. */
+static bool s_rail_on;
+
 /* Scale an 8-bit colour byte by the current brightness, with rounding so
  * 255 stays 255 instead of dropping to 254 after /255. */
 static inline uint8_t apply_brightness(uint8_t v)
@@ -88,6 +93,7 @@ void rgb_init(void)
     GPIOB_ModeCfg(RGB_DIN_PIN, GPIO_ModeOut_PP_5mA);
     GPIOB_ModeCfg(RGB_EN_PIN,  GPIO_ModeOut_PP_5mA);
     GPIOB_SetBits(RGB_EN_PIN);
+    s_rail_on = true;
 
     memset(s_color, 0, sizeof(s_color));
     s_brightness = 255;
@@ -127,7 +133,8 @@ void rgb_set_enable(bool on)
                     (uint32_t)s_bitbuf,
                     (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
                     Mode_LOOP);
-        s_dirty = true;
+        s_dirty   = true;
+        s_rail_on = true;
     } else {
         /* A WS2812 shows whatever frame it latched last for as long as it has
          * power, so clearing the colour buffer and stopping the DMA on its own
@@ -135,14 +142,31 @@ void rgb_set_enable(bool on)
          * first, then park the line low (stop the DMA and force CCR to 0, where
          * the timer's active-high output never fires) and cut the rail. */
         memset(s_color, 0, sizeof(s_color));
+
+        /* Stop the DMA before rewriting s_bitbuf: rgb_poll() defers its own
+         * rewrite to the DMA's reset tail, but this path cannot, and filling
+         * while the DMA reads tears the frame. */
+        TMR1_DMACfg(DISABLE, 0u, 0u, Mode_LOOP);
         fill_bitbuf();
+
+        /* Clock the black frame out, then park and cut. */
+        TMR1_DMACfg(ENABLE,
+                    (uint32_t)s_bitbuf,
+                    (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
+                    Mode_LOOP);
         mDelayuS(2000u);            /* one frame + reset tail, any chain length */
 
         TMR1_DMACfg(DISABLE, 0u, 0u, Mode_LOOP);
         TMR1_PWMActDataWidth(0u);
-        s_dirty = false;
+        s_dirty   = false;
+        s_rail_on = false;
         GPIOB_ResetBits(RGB_EN_PIN);
     }
+}
+
+bool rgb_rail_enabled(void)
+{
+    return s_rail_on;
 }
 
 void rgb_set_brightness(uint8_t b)
