@@ -29,6 +29,7 @@
 #include "bat.h"
 #include "bio.h"
 #include "log.h"
+#include "motor.h"
 #include "oled.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
@@ -67,9 +68,19 @@ static void standby_park(void)
      * the SPI bus until the wake path has restored the clock. */
     paw3395_motion_park();
 
-    /* The panel, the LED rail and the BIO module are already dark - they are
-     * dropped from the product, see settings_apply() - so what is left to give
-     * up here is the ADC reference and the peripheral clocks. */
+    /* Enforce what the rest of this path assumes instead of trusting the
+     * peripheral gate: a 2.6 uA sleep must not be spent with the panel lit, the
+     * rail driving the LEDs or the motor running. The motor is the one that
+     * really needs this - its own timing lives in motor_poll(), which the main
+     * loop cannot run once we are asleep - and all of it has to happen while the
+     * clocks, the I2C and the UART are still up. */
+    motor_off();
+    rgb_set_enable(false);
+    (void)oled_set_enable(false);
+    bio_measure_disable();
+    bio_sleep_enable();
+
+    /* What is left to give up here is the ADC reference and the clocks. */
     R8_ADC_CFG &= (uint8_t)~(RB_ADC_POWER_ON | RB_ADC_BUF_EN);
 
     PWR_PeriphClkCfg(DISABLE, POWER_CLK_OFF_MASK);
