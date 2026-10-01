@@ -24,6 +24,8 @@ void motor_init(void)
     GPIOB_ModeCfg(GPIO_Pin_0, GPIO_ModeOut_PP_5mA);
 }
 
+static uint32_t s_until;   /* 0 while idle; a deadline while a pulse runs */
+
 void motor_on(void)
 {
     GPIOB_SetBits(GPIO_Pin_0);
@@ -31,5 +33,20 @@ void motor_on(void)
 
 void motor_off(void)
 {
+    s_until = 0u;   /* an explicit off cancels a pulse in flight */
     GPIOB_ResetBits(GPIO_Pin_0);
+}
+
+void motor_pulse(uint32_t now_ms, uint32_t ms)
+{
+    motor_on();
+    s_until = now_ms + ms;
+}
+
+void motor_poll(uint32_t now_ms)
+{
+    if ((s_until != 0u) && ((int32_t)(now_ms - s_until) >= 0)) {
+        s_until = 0u;
+        motor_off();
+    }
 }

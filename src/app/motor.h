@@ -31,8 +31,20 @@ void motor_init(void);
 /* MOSFET on: full drive. */
 void motor_on(void);
 
-/* MOSFET off: the motor free-wheels to a stop. */
+/* MOSFET off: the motor free-wheels to a stop. Also cancels a pulse in flight. */
 void motor_off(void);
+
+/* Every mode switch is announced with one of these. Long enough for the ERM to
+ * spin up and actually be felt, which the two short test bursts were not. */
+#define MOTOR_MODE_SWITCH_MS  100u
+
+/* One-shot pulse: the motor runs for `ms` and motor_poll() ends it. The caller
+ * never waits - a mode switch starts one and carries straight on. */
+void motor_pulse(uint32_t now_ms, uint32_t ms);
+
+/* Ends a pulse once its window has elapsed. Must be called from the main loop:
+ * without it a pulse would never stop. */
+void motor_poll(uint32_t now_ms);
 
 #ifdef __cplusplus
 }

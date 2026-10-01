@@ -17,6 +17,7 @@
 #include "CH58x_common.h"
 #include "ISP585.h"
 #include "log.h"
+#include "motor.h"
 
 #if defined(WCH_BLE_ENABLE) && defined(WCH_RF_ENABLE)
 #define RADIO_MODE_SELECTABLE 1
@@ -45,6 +46,7 @@
 static uint32_t s_btn_ms;
 static bool     s_btn_held;
 static bool     s_btn_armed;
+static uint32_t s_reset_at;   /* nonzero once the switch has been stored */
 
 /* The ROM's DataFlash commands require the buffer to be in RAM, 4-byte
  * aligned, and a 4-byte multiple in length - the vendor HAL's own flash
@@ -123,6 +125,12 @@ void radio_mode_poll(uint32_t now_ms, bool combo_held)
 #if RADIO_MODE_SELECTABLE
     bool pressed = combo_held;
 
+    /* The reset waits for the switch buzz to finish: it pulls PB0 down, so the
+     * motor could not have outlived it. */
+    if ((s_reset_at != 0u) && ((int32_t)(now_ms - s_reset_at) >= 0)) {
+        SYS_ResetExecute();
+    }
+
     if (pressed != s_btn_held) {
         s_btn_held = pressed;
         s_btn_ms   = now_ms;
@@ -134,8 +142,11 @@ void radio_mode_poll(uint32_t now_ms, bool combo_held)
 
             LOG_I("MODE", "switch to %s", (next == RADIO_MODE_BLE) ? "BLE" : "RF");
             radio_mode_store(next);
-            mDelaymS(100);   /* let the UART drain the log before resetting */
-            SYS_ResetExecute();
+
+            /* Announce it, then reset when the buzz ends. Non-blocking, and long
+             * enough for the log line above to drain on its own. */
+            motor_pulse(now_ms, MOTOR_MODE_SWITCH_MS);
+            s_reset_at = now_ms + MOTOR_MODE_SWITCH_MS;
         }
         return;
     }

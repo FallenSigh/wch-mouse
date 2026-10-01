@@ -316,6 +316,7 @@ int main() {
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
+        motor_poll(s_tick_ms);
         settings_poll(s_tick_ms);
 
         /* BIO real-time screen: refresh only on a fresh packet (~1.28 s) and
