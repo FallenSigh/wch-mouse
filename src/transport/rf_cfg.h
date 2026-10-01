@@ -30,16 +30,25 @@ typedef struct __attribute__((packed)) {
 
 /* Reverse direction: the dongle answers every packet it receives with one of
  * these, so the mouse gets a channel back without a hardware ACK (the RFIP
- * exposes no way to load an ACK payload). Short on purpose - it has to make the
- * whole round trip inside one 1 ms period. */
+ * exposes no way to load an ACK payload).
+ *
+ * It doubles as the command channel. The host writes the same vendor Feature
+ * report it sends to the mouse; the dongle cannot run that protocol itself, so
+ * it captures the frame and rotates it through the replies in RF_CMD_CHUNK
+ * pieces. The mouse restarts its assembly on every chunk 0, which is the retry
+ * - a dropped reply only costs another pass - and cmd_id is what stops a repeat
+ * from executing twice (a BIO acquisition blocks the mouse for 50 ms). */
 #define RF_ACK_TYPE         0x7Eu        /* deliberately not RF_PKT_LEN */
+#define RF_CMD_CHUNK        16u          /* command bytes carried per reply */
 
 typedef struct __attribute__((packed)) {
     uint8_t       type;      /* RF_ACK_TYPE */
     uint8_t       length;    /* total frame length, incl. this 4-byte header */
-    uint8_t       seq;       /* last mouse seq this dongle saw */
-    uint8_t       resv;
+    uint8_t       cmd_id;    /* 0 when idle; changes per captured command */
+    uint8_t       chunk;     /* 0-based index of this piece */
+    uint8_t       cmd_len;   /* whole command length; 0 when idle */
     uint16_t      rx_count;  /* packets received so far; the mouse differences it */
+    uint8_t       payload[RF_CMD_CHUNK];
 } RfAck_t;
 
 #define RF_ACK_LEN          (sizeof(RfAck_t))

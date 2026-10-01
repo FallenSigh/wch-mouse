@@ -12,6 +12,7 @@
 #include "transport_rf.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #ifdef WCH_RF_ENABLE
 
@@ -19,6 +20,7 @@
 #include "radio_mode.h"
 #include "CH58x_common.h"
 #include "log.h"
+#include "proto.h"
 #include "wchrf.h"
 
 /* One report per millisecond, matching the host-side USB poll. */
@@ -28,6 +30,7 @@ static MouseReport_t s_acc;        /* motion accumulated since the last packet *
 static RfPacket_t    s_tx;         /* what the RFIP DMAs out - kept separate from
                                     * s_acc so the async DMA never races the reset */
 static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN];
+static uint8_t    s_cmd[PROTO_FRAME_LEN];
 static bool       s_have;
 static uint8_t    s_seq;
 static uint32_t   s_tx_n;
@@ -39,9 +42,64 @@ static uint16_t   s_peer_rx;
 static uint32_t   s_stat_ms;
 static uint32_t   s_dbg_tx;
 static uint16_t   s_dbg_peer;
+static uint16_t   s_cmd_len;         /* pieces assembled so far */
+static uint16_t   s_cmd_total;       /* whole frame length, 0 while incomplete */
+static uint8_t    s_cmd_id;          /* the last command id executed */
+static uint8_t    s_cmd_logged;      /* the last command id reported in the log */
+static volatile uint8_t s_reply_len; /* cmd_len of the last reply seen */
+static volatile uint8_t s_reply_id;  /* its cmd_id */
+static volatile bool s_cmd_ready;    /* complete frame waiting for rf_poll() */
 
 static rfipTx_t   s_tx_param;
 static rfipRx_t   s_rx_param;
+
+/* Reassemble the host's command out of the replies. The dongle rotates the
+ * whole frame, so restarting on chunk 0 is the retry and the frame's own sum8
+ * is what rejects a torn one. Only memcpy may run here - this is the RF ISR. */
+static void rf_cmd_feed(const RfAck_t *ack)
+{
+    uint16_t off;
+    uint16_t n;
+
+    if (ack->cmd_len == 0u) {
+        s_reply_len = 0u;
+        return;
+    }
+
+    s_reply_len = ack->cmd_len;
+    s_reply_id  = ack->cmd_id;
+
+    if (ack->chunk == 0u) {
+        s_cmd_len   = 0u;
+        s_cmd_total = 0u;
+    }
+
+    off = (uint16_t)ack->chunk * RF_CMD_CHUNK;
+    if ((off != s_cmd_len) || (off >= PROTO_FRAME_LEN)) {
+        return;
+    }
+
+    n = (uint16_t)(ack->cmd_len - off);
+    if (n > RF_CMD_CHUNK) {
+        n = RF_CMD_CHUNK;
+    }
+    if (n > (uint16_t)(PROTO_FRAME_LEN - s_cmd_len)) {
+        n = (uint16_t)(PROTO_FRAME_LEN - s_cmd_len);
+    }
+
+    memcpy(&s_cmd[s_cmd_len], ack->payload, n);
+    s_cmd_len = (uint16_t)(s_cmd_len + n);
+
+    /* cmd + seq + len, payload, then sum8. */
+    if ((s_cmd_len >= 3u) && (s_cmd[2] <= (uint8_t)(PROTO_FRAME_LEN - 4u))) {
+        s_cmd_total = (uint16_t)(s_cmd[2] + 4u);
+    }
+
+    if ((s_cmd_total != 0u) && (s_cmd_len >= s_cmd_total) && (ack->cmd_id != s_cmd_id)) {
+        s_cmd_id    = ack->cmd_id;
+        s_cmd_ready = true;
+    }
+}
 
 static void rf_process_cb(rfRole_States_t sta, uint8_t id)
 {
@@ -61,6 +119,7 @@ static void rf_process_cb(rfRole_States_t sta, uint8_t id)
         if ((ack->type == RF_ACK_TYPE) && (ack->length == RF_ACK_LEN)) {
             s_peer_rx = ack->rx_count;
             s_ack_n++;
+            rf_cmd_feed(ack);
         }
     }
 }
@@ -145,6 +204,23 @@ static void rf_poll(uint32_t now_ms)
         return;
     }
 
+    /* Says whether the dongle captured a host command at all, which is the one
+     * thing the mouse can see without a UART on the dongle. */
+    if ((s_reply_len != 0u) && (s_reply_id != s_cmd_logged)) {
+        s_cmd_logged = s_reply_id;
+        LOG_I("RF", "reply carries a %u byte command (id %u)", (unsigned)s_reply_len,
+              (unsigned)s_reply_id);
+    }
+
+    /* The command was assembled in the ISR but must not run there: running one
+     * can block (BIO wakes the module and waits 50 ms), so it happens here. */
+    if (s_cmd_ready) {
+        s_cmd_ready = false;
+        LOG_I("RF", "host cmd id=%u len=%u", (unsigned)s_cmd_id, (unsigned)s_cmd_total);
+        proto_handle_set(s_cmd, s_cmd_total);
+        s_cmd_total = 0u;
+    }
+
     if (now_ms - s_stat_ms >= 5000u) {
         const uint32_t dt = s_tx_n - s_dbg_tx;
         const uint16_t dp = (uint16_t)(s_peer_rx - s_dbg_peer);
@@ -185,10 +261,10 @@ static void rf_poll(uint32_t now_ms)
     RFIP_SetTxParm(&s_tx_param);
 
     ++s_tx_n;
-    if (s_tx_n <= 5u || (s_tx_n % 500u) == 0u) {
+    if (s_tx_n <= 5u || (s_tx_n % 5000u) == 0u) {
         const uint8_t *p = (const uint8_t *)&s_tx;
 
-        LOG_I("RF", "tx %u: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+        LOG_D("RF", "tx %u: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
               (unsigned)s_tx_n, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]);
     }
 }

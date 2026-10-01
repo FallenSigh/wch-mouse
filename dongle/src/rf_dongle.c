@@ -10,6 +10,7 @@
 #include "rf_dongle.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 #include "rf_cfg.h"
 #include "CH58x_common.h"
@@ -18,6 +19,13 @@
 #include "wchrf.h"
 
 #define HID_EP  DEF_UEP4
+
+/* The vendor Feature report frame, and how many replies go out carrying a
+ * captured one: the 63-byte frame takes 4 pieces, so 400 replies is ~100 passes
+ * at 1 kHz - well under a tenth of a second, and the mouse only has to get one
+ * pass through intact. */
+#define RF_CMD_MAX     63u
+#define RF_CMD_REPEAT  400u
 
 static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN];   /* RF DMA target */
 static RfPacket_t s_mail;       /* last complete packet, consumed by the poll */
@@ -28,10 +36,74 @@ static rfipTx_t   s_tx_param;
 static volatile bool s_rx_ready;
 static uint32_t      s_rx_n;
 
+static uint8_t  s_cmd[RF_CMD_MAX];   /* the host's last SET frame */
+static uint16_t s_cmd_len;           /* 0 when there is nothing to carry */
+static uint16_t s_cmd_off;           /* next piece to hand out */
+static uint16_t s_cmd_left;          /* replies still carrying it */
+static uint8_t  s_cmd_id;            /* the mouse dedups repeats on this */
+static volatile uint16_t s_cmd_trace; /* nonzero once a fresh frame arrived */
+
+void proto_handle_set(const uint8_t *frame, uint16_t len);
+
 /* Re-arm the receiver; each packet is one poll, so this has to be prompt. */
 static void rf_rx_start(void)
 {
     RFIP_SetRx(&s_rx_param);
+}
+
+/* The host writes the same vendor Feature report it writes to the mouse. The
+ * dongle has no protocol module of its own, so it only captures the frame for
+ * the RF side - the mouse is what runs it. Called from the USB ISR, so the copy
+ * is the whole body. */
+void proto_handle_set(const uint8_t *frame, uint16_t len)
+{
+    if ((frame == NULL) || (len == 0u)) {
+        return;
+    }
+
+    s_cmd_len = (len > RF_CMD_MAX) ? RF_CMD_MAX : len;
+    memcpy(s_cmd, frame, s_cmd_len);
+
+    if (++s_cmd_id == 0u) {
+        s_cmd_id = 1u;   /* 0 means "nothing pending" on the wire */
+    }
+
+    s_cmd_off  = 0u;
+    s_cmd_left = RF_CMD_REPEAT;
+    s_cmd_trace = s_cmd_len;
+}
+
+/* Rotate the pending frame through the replies. Chunk 0 restarts the mouse's
+ * assembly, so handing the whole frame out again is the retry. */
+static void rf_ack_fill_cmd(void)
+{
+    uint16_t n;
+
+    if ((s_cmd_len == 0u) || (s_cmd_left == 0u)) {
+        s_ack.cmd_id  = 0u;
+        s_ack.chunk   = 0u;
+        s_ack.cmd_len = 0u;
+        return;
+    }
+
+    if (s_cmd_off >= s_cmd_len) {
+        s_cmd_off = 0u;
+    }
+
+    n = (uint16_t)(s_cmd_len - s_cmd_off);
+    if (n > RF_CMD_CHUNK) {
+        n = RF_CMD_CHUNK;
+    }
+
+    s_ack.cmd_id  = s_cmd_id;
+    s_ack.chunk   = (uint8_t)(s_cmd_off / RF_CMD_CHUNK);
+    s_ack.cmd_len = (uint8_t)s_cmd_len;
+
+    memset(s_ack.payload, 0, sizeof(s_ack.payload));
+    memcpy(s_ack.payload, &s_cmd[s_cmd_off], n);
+
+    s_cmd_off = (uint16_t)(s_cmd_off + RF_CMD_CHUNK);
+    s_cmd_left--;
 }
 
 static void rf_process_cb(rfRole_States_t sta, uint8_t id)
@@ -50,9 +122,8 @@ static void rf_process_cb(rfRole_States_t sta, uint8_t id)
          * receiver is only re-armed once it has left. */
         s_ack.type     = RF_ACK_TYPE;
         s_ack.length   = RF_ACK_LEN;
-        s_ack.seq      = pkt->seq;
-        s_ack.resv     = 0;
         s_ack.rx_count = (uint16_t)s_rx_n;
+        rf_ack_fill_cmd();
 
         RFIP_SetTxStart();
         RFIP_SetTxParm(&s_tx_param);
@@ -108,6 +179,11 @@ void rf_dongle_init(void)
 
 void rf_dongle_poll(void)
 {
+    if (s_cmd_trace != 0u) {
+        LOG_I("RF", "host cmd %u bytes", (unsigned)s_cmd_trace);
+        s_cmd_trace = 0u;
+    }
+
     if (!s_rx_ready) {
         return;
     }
@@ -117,12 +193,13 @@ void rf_dongle_poll(void)
         USBHS_Endp_DataUp(HID_EP, (uint8_t *)&s_mail.report, sizeof(MouseReport_t),
                           DEF_UEP_CPY_LOAD);
 
-        /* Throttled raw dump (~every 0.5 s at 1 kHz) to check the on-air
-         * alignment: type, length, seq, resv, then the 6 report bytes. */
-        if (s_rx_n <= 5u || (s_rx_n % 500u) == 0u) {
+        /* Raw dump of the on-air alignment: type, length, seq, resv, then the 6
+         * report bytes. Debug-only - it is one line per 5 s and stripped unless
+         * the build asks for LOG_LVL_DEBUG. */
+        if (s_rx_n <= 5u || (s_rx_n % 5000u) == 0u) {
             const uint8_t *p = (const uint8_t *)&s_mail;
 
-            LOG_I("RF", "rx %u: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+            LOG_D("RF", "rx %u: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
                   (unsigned)s_rx_n, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]);
         }
     } else {

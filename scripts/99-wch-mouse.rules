@@ -5,8 +5,9 @@
 # it runs as root. This rule grants access instead.
 #
 # ATTRS matches the USB device behind the hidraw node, so one rule covers every
-# interface it exposes -- the mouse input collection, the vendor Feature
-# collection, and the dongle.
+# interface it exposes -- the mouse input collection and the vendor Feature
+# collection. The dongle reports a different product id, so it needs its own
+# line; without it every --dongle command fails with "Permission denied".
 #
 # Install:
 #   sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/
@@ -18,3 +19,4 @@
 # the firmware's DEF_USB_VID / DEF_USB_PID change (src/bsp/usb_desc.h).
 
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe0c", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe0d", MODE="0666", TAG+="uaccess"

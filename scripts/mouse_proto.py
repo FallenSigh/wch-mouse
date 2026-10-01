@@ -70,6 +70,11 @@ LIFT_CUTS = ("1mm", "2mm")
 RATES = (125, 250, 500, 1000, 2000, 4000, 8000)
 # The rate command's first payload byte selects the link (src/app/proto.c).
 LINKS = {"usb": 0, "rf": 1, "ble": 2}
+PID_DONGLE = 0xFE0D
+# Set from --no-reply/--dongle. A SET sent through the dongle reaches the mouse
+# over the RF reply channel, but nothing carries an answer back yet, so it is
+# fire-and-forget.
+SEND_ONLY = False
 
 
 def build_frame(cmd: int, seq: int, payload: bytes = b"") -> bytes:
@@ -116,6 +121,8 @@ def open_device(opts):
         chosen = next((i for i in infos if i.get("interface_number") == HID_ITF), infos[0])
 
     path = chosen["path"]
+    print(f"target {path.decode(errors='replace')} itf={chosen.get('interface_number')} "
+          f"usage={chosen.get('usage_page')}:{chosen.get('usage')}")
     try:
         if hasattr(hid, "Device"):      # pyhidapi / hidapi: Device(path=...)
             return hid.Device(path=path)
@@ -135,7 +142,15 @@ def open_device(opts):
 
 def transact(dev, cmd: int, payload: bytes = b"", seq: int = 1, wait: float = 0.03):
     """Send one request and return (status, data) from the reply."""
-    dev.send_feature_report(bytes([REPORT_ID]) + build_frame(cmd, seq, payload))
+    sent = dev.send_feature_report(bytes([REPORT_ID]) + build_frame(cmd, seq, payload))
+    if sent is not None and sent < 0:
+        raise SystemExit(f"the device rejected the feature report ({sent})")
+
+    if SEND_ONLY:
+        print(f"sent cmd {cmd:#04x} seq {seq}, {len(payload)} payload bytes "
+              f"(no reply path: any values printed after this are placeholders)")
+        return 0x00, bytes(8)
+
     time.sleep(wait)
 
     rsp = bytes(dev.get_feature_report(REPORT_ID, 1 + FRAME_LEN))
@@ -197,7 +212,19 @@ def main() -> int:
     p.add_argument("cmd", type=lambda s: int(s, 0))
     p.add_argument("payload", nargs="*", help="payload bytes, e.g. 40 06")
 
+    ap.add_argument("--dongle", action="store_true",
+                    help="address the RF dongle instead of the mouse: it carries SET "
+                         "commands to the mouse over the RF reply channel, but there is "
+                         "no reply path yet, so it is fire-and-forget")
+    ap.add_argument("--no-reply", action="store_true",
+                    help="send the request without waiting for a response")
+
     opts = ap.parse_args()
+
+    global SEND_ONLY
+    SEND_ONLY = opts.no_reply or opts.dongle
+    if opts.dongle:
+        opts.pid = PID_DONGLE
     if not opts.list and not opts.command:
         ap.error("a command is required (or use --list)")
     dev = open_device(opts)
