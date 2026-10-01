@@ -4,8 +4,8 @@
  * RF (the dongle link) is preferred; BLE is the fallback for hosts without a
  * receiver. Both run on the same radio and the vendor stack exposes no proven
  * live switch (RFRole_SwitchMode has no example and requires an idle radio),
- * so the mode is applied at boot: the BOOT strap pin doubles as the selector,
- * and a long press stores the other mode and resets into it.
+ * so the mode is applied at boot: side 1 and the wheel click double as the
+ * selector, and a long press stores the other mode and resets into it.
  *
  * Only a dual-transport image has a choice to make. A single-radio build fixes
  * its mode at compile time, so a stale DataFlash value can never disable the
@@ -38,10 +38,8 @@
 #define RADIO_MODE_FLASH_OFF    0x0000u
 #define RADIO_MODE_MAGIC        0x5Au
 
-/* PB22 is the BOOT strap, sampled only at reset, so pressing it while running
- * costs nothing. The switch is deferred to the release: resetting while the
- * pin is still low would restart into the ISP bootloader, not the app. */
-#define MODE_BTN_PIN            GPIO_Pin_22
+/* The switch is deferred to the release, so the reset never races the buttons
+ * still being down. */
 #define MODE_BTN_HOLD_MS        3000u
 
 static uint32_t s_btn_ms;
@@ -89,7 +87,6 @@ void radio_mode_init(void)
 {
 #if RADIO_MODE_SELECTABLE
     s_mode = radio_mode_load();
-    GPIOB_ModeCfg(MODE_BTN_PIN, GPIO_ModeIN_PU);
     LOG_I("MODE", "radio %s", (s_mode == RADIO_MODE_BLE) ? "BLE" : "RF");
 #elif defined(WCH_RF_ENABLE)
     s_mode = RADIO_MODE_RF;
@@ -121,10 +118,10 @@ bool radio_mode_armed(void)
 #endif
 }
 
-void radio_mode_poll(uint32_t now_ms)
+void radio_mode_poll(uint32_t now_ms, bool combo_held)
 {
 #if RADIO_MODE_SELECTABLE
-    bool pressed = (GPIOB_ReadPortPin(MODE_BTN_PIN) == 0u);
+    bool pressed = combo_held;
 
     if (pressed != s_btn_held) {
         s_btn_held = pressed;
@@ -149,5 +146,6 @@ void radio_mode_poll(uint32_t now_ms)
     }
 #else
     (void)now_ms;
+    (void)combo_held;
 #endif
 }

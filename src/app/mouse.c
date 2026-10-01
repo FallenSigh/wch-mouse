@@ -6,6 +6,7 @@
 #include "paw3395_port.h"
 #include "log.h"
 #include "power.h"
+#include "radio_mode.h"
 
 #define BTN_LEFT_PIN      GPIO_Pin_7     // PB7   PR_SW1
 #define BTN_RIGHT_PIN     GPIO_Pin_1     // PB1   PR_SW2
@@ -155,6 +156,10 @@ void mouse_scan(uint32_t now_ms)
     if (air_mouse_combo_held()) {
         buttons &= (uint8_t)~(HID_BTN_BACK | HID_BTN_FWD);
     }
+
+    const uint8_t mode_combo = (uint8_t)(HID_BTN_BACK | HID_BTN_MID);
+
+    radio_mode_poll(now_ms, (buttons & mode_combo) == mode_combo);
 
     int16_t dx = 0;
     int16_t dy = 0;

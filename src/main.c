@@ -310,7 +310,6 @@ int main() {
             UART3_Init(1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY);
         }
 
-        radio_mode_poll(s_tick_ms);
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
