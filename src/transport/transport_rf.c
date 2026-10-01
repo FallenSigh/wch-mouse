@@ -26,13 +26,21 @@
 /* One report per millisecond, matching the host-side USB poll. */
 #define RF_TX_PERIOD_MS   1u
 
+/* How many times a response is streamed before it is considered delivered: the
+ * dongle needs one whole pass through, and a chunk lost on air costs that pass.
+ * Eight passes of 8 chunks is 64 ms of a 1 kHz link. */
+#define RF_REPLY_PASSES   8u
+
 static MouseReport_t s_acc;        /* motion accumulated since the last packet */
 static RfPacket_t    s_tx;         /* what the RFIP DMAs out - kept separate from
                                     * s_acc so the async DMA never races the reset */
 static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN];
 static uint8_t    s_cmd[PROTO_FRAME_LEN];
 static bool       s_have;
-static uint8_t    s_seq;
+static uint8_t    s_resp_gen;        /* the response generation already picked up */
+static uint16_t   s_resp_off;        /* next byte to stream; 0 while idle */
+static uint16_t   s_resp_total;      /* length of the frame being streamed */
+static uint8_t    s_resp_pass;       /* passes of it already sent */
 static uint32_t   s_tx_n;
 static uint32_t   s_tx_ms;
 static bool       s_up;
@@ -238,16 +246,56 @@ static void rf_poll(uint32_t now_ms)
         s_ack_n    = 0;
     }
 
-    if (!s_have || (now_ms - s_tx_ms < RF_TX_PERIOD_MS)) {
+    /* Pick up a fresh response. Its own header gives the frame length, so a
+     * partly streamed one is never taken for a whole one. */
+    if ((s_resp_off == 0u) && (proto_response_gen() != s_resp_gen)) {
+        s_resp_gen   = proto_response_gen();
+        s_resp_total = (uint16_t)(proto_response()[2] + 4u);
+        s_resp_pass  = 0u;
+    }
+
+    if (now_ms - s_tx_ms < RF_TX_PERIOD_MS) {
+        return;
+    }
+
+    /* A response has to go out even with no motion: this frame is its only way
+     * back to the host. */
+    if (!s_have && (s_resp_off >= s_resp_total)) {
         return;
     }
     s_tx_ms = now_ms;
 
     s_tx.type   = RF_PKT_TYPE;
     s_tx.length = RF_PKT_LEN;
-    s_tx.seq    = ++s_seq;
-    s_tx.resv   = 0;
     s_tx.report = s_acc;
+
+    if (s_resp_off < s_resp_total) {
+        const uint8_t *resp = proto_response();
+        uint16_t       n    = (uint16_t)(s_resp_total - s_resp_off);
+
+        if (n > RF_REPLY_CHUNK) {
+            n = RF_REPLY_CHUNK;
+        }
+
+        s_tx.resp_id = s_resp_gen;
+        s_tx.chunk   = (uint8_t)(s_resp_off / RF_REPLY_CHUNK);
+        memset(s_tx.reply, 0, sizeof(s_tx.reply));
+        memcpy(s_tx.reply, &resp[s_resp_off], n);
+
+        s_resp_off = (uint16_t)(s_resp_off + RF_REPLY_CHUNK);
+        if (s_resp_off >= s_resp_total) {
+            s_resp_off = 0u;
+
+            /* Every pass restarts at chunk 0, which is the retry: the dongle
+             * only needs to get one of them through intact. */
+            if (++s_resp_pass >= RF_REPLY_PASSES) {
+                s_resp_total = 0u;
+            }
+        }
+    } else {
+        s_tx.resp_id = 0u;
+        s_tx.chunk   = 0u;
+    }
 
     /* Reset the accumulator (a different buffer, so the RFIP's DMA can still
      * read s_tx safely) and hand the packet to the radio. */

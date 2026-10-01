@@ -17,12 +17,20 @@
 
 #define RF_PKT_TYPE         0x55u        /* frame type / device id */
 
+/* The mouse's only uplink is this frame, so the answer to a host command rides
+ * along in it instead of costing a second direction: resp_id/`chunk` index the
+ * pieces and `reply` carries them. resp_id is 0 when there is nothing to send.
+ * A response has to be sent even with no motion, which is why the stream is
+ * driven by a fresh response rather than by the report. */
+#define RF_REPLY_CHUNK      8u
+
 typedef struct __attribute__((packed)) {
     uint8_t       type;      /* RF_PKT_TYPE */
     uint8_t       length;    /* total frame length, incl. this 4-byte header */
-    uint8_t       seq;       /* increments per packet; lets the dongle drop dups */
-    uint8_t       resv;
+    uint8_t       resp_id;   /* response generation; 0 when idle */
+    uint8_t       chunk;     /* 0-based index of this piece into the response */
     MouseReport_t report;
+    uint8_t       reply[RF_REPLY_CHUNK];
 } RfPacket_t;
 
 #define RF_PKT_LEN          (sizeof(RfPacket_t))

@@ -31,4 +31,10 @@ void proto_handle_set(const uint8_t *frame, uint16_t len);
 /* GET_FEATURE (device -> host): copy the pending response into `frame`. */
 void proto_handle_get(uint8_t *frame, uint16_t len);
 
+/* The pending response itself, for a transport that has to carry it back on its
+ * own (the RF link). `proto_response_gen()` changes with every reply, so the
+ * caller can tell a fresh one from the one it already sent. */
+const uint8_t *proto_response(void);
+uint8_t        proto_response_gen(void);
+
 #endif /* __PROTO_H__ */

@@ -71,10 +71,27 @@ RATES = (125, 250, 500, 1000, 2000, 4000, 8000)
 # The rate command's first payload byte selects the link (src/app/proto.c).
 LINKS = {"usb": 0, "rf": 1, "ble": 2}
 PID_DONGLE = 0xFE0D
-# Set from --no-reply/--dongle. A SET sent through the dongle reaches the mouse
-# over the RF reply channel, but nothing carries an answer back yet, so it is
-# fire-and-forget.
+# Set from --no-reply: send and do not wait for a response.
 SEND_ONLY = False
+# How long to wait for the reply. Through the dongle a command has to cross the
+# RF link, run, and have its answer streamed back, so the window has to cover the
+# slowest thing the mouse can be asked to do: bringing the panel up NACKs for
+# ~120 ms while its charge pump settles, BIO acquisition adds ~50 ms, and the
+# answer itself is 8 x 8 passes. 400 ms covers all of it.
+REPLY_WAIT = 0.03
+REPLY_WAIT_RF = 0.4
+
+
+_seq = 0
+
+
+def next_seq() -> int:
+    """A fresh sequence per request. The reply echoes it, which is how a read-back
+    is matched to the request that caused it: over RF the answer streams back on
+    its own schedule, so a stale one can be sitting there when we look."""
+    global _seq
+    _seq = (_seq + 1) & 0xFF
+    return _seq
 
 
 def build_frame(cmd: int, seq: int, payload: bytes = b"") -> bytes:
@@ -140,31 +157,43 @@ def open_device(opts):
         )
 
 
-def transact(dev, cmd: int, payload: bytes = b"", seq: int = 1, wait: float = 0.03):
+def transact(dev, cmd: int, payload: bytes = b"", seq=None, wait=None):
     """Send one request and return (status, data) from the reply."""
+    if seq is None:
+        seq = next_seq()
+
     sent = dev.send_feature_report(bytes([REPORT_ID]) + build_frame(cmd, seq, payload))
     if sent is not None and sent < 0:
         raise SystemExit(f"the device rejected the feature report ({sent})")
 
     if SEND_ONLY:
-        print(f"sent cmd {cmd:#04x} seq {seq}, {len(payload)} payload bytes "
-              f"(no reply path: any values printed after this are placeholders)")
+        print(f"sent cmd {cmd:#04x} seq {seq}, {len(payload)} payload bytes, no reply requested")
         return 0x00, bytes(8)
 
-    time.sleep(wait)
+    deadline = time.monotonic() + (REPLY_WAIT if wait is None else wait)
+    want_cmd = (cmd | 0x80) & 0xFF
+    want_seq = seq & 0xFF
+    last     = b""
 
-    rsp = bytes(dev.get_feature_report(REPORT_ID, 1 + FRAME_LEN))
-    if len(rsp) < 1 + 4:
-        raise SystemExit(f"short response ({len(rsp)} bytes)")
+    while True:
+        rsp = bytes(dev.get_feature_report(REPORT_ID, 1 + FRAME_LEN))
+        if len(rsp) < 1 + 4:
+            raise SystemExit(f"short response ({len(rsp)} bytes)")
 
-    reply = rsp[1:1 + FRAME_LEN]  # strip the Report ID prefix
-    if reply[0] != ((cmd | 0x80) & 0xFF):
-        raise SystemExit(f"unexpected reply cmd {reply[0]:#04x} for {cmd:#04x}")
-    if reply[1] != (seq & 0xFF):
-        raise SystemExit(f"sequence mismatch: sent {seq}, got {reply[1]}")
+        reply = rsp[1:1 + FRAME_LEN]  # strip the Report ID prefix
+        last  = reply
 
-    plen = reply[2]
-    return reply[3], reply[4:4 + max(plen - 1, 0)]
+        if reply[0] == want_cmd and reply[1] == want_seq:
+            plen = reply[2]
+            return reply[3], reply[4:4 + max(plen - 1, 0)]
+
+        # Through the dongle the answer arrives on the RF link's schedule, so
+        # keep looking for ours instead of taking whatever is there.
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                f"no reply for cmd {cmd:#04x} seq {seq} "
+                f"(last was {last[0]:#04x} seq {last[1]})")
+        time.sleep(0.005)
 
 
 def u16(data: bytes, off: int = 0) -> int:
@@ -177,7 +206,8 @@ def main() -> int:
     ap.add_argument("--pid", type=lambda s: int(s, 0), default=PID)
     ap.add_argument("--path", help="force a HID path (see --list)")
     ap.add_argument("--list", action="store_true", help="list matching HID interfaces and exit")
-    ap.add_argument("--seq", type=int, default=1, help="sequence byte to send")
+    ap.add_argument("--seq", type=int, default=None,
+                    help="sequence byte to send (default: one per request)")
 
     sub = ap.add_subparsers(dest="command")
     sub.add_parser("version", help="protocol + firmware version")
@@ -213,18 +243,18 @@ def main() -> int:
     p.add_argument("payload", nargs="*", help="payload bytes, e.g. 40 06")
 
     ap.add_argument("--dongle", action="store_true",
-                    help="address the RF dongle instead of the mouse: it carries SET "
-                         "commands to the mouse over the RF reply channel, but there is "
-                         "no reply path yet, so it is fire-and-forget")
+                    help="address the RF dongle instead of the mouse: commands cross the "
+                         "RF link, so their replies take longer to come back")
     ap.add_argument("--no-reply", action="store_true",
                     help="send the request without waiting for a response")
 
     opts = ap.parse_args()
 
-    global SEND_ONLY
-    SEND_ONLY = opts.no_reply or opts.dongle
+    global SEND_ONLY, REPLY_WAIT
+    SEND_ONLY = opts.no_reply
     if opts.dongle:
         opts.pid = PID_DONGLE
+        REPLY_WAIT = REPLY_WAIT_RF
     if not opts.list and not opts.command:
         ap.error("a command is required (or use --list)")
     dev = open_device(opts)

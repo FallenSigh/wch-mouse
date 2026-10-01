@@ -50,6 +50,7 @@
 #define PROTO_VERSION         1u
 
 static uint8_t s_resp[PROTO_FRAME_LEN];
+static uint8_t s_resp_gen;
 
 static uint8_t proto_sum(const uint8_t *p, uint16_t n)
 {
@@ -78,6 +79,20 @@ static void proto_reply(uint8_t cmd, uint8_t seq, uint8_t status, const uint8_t 
     }
 
     s_resp[PROTO_SUM_OFF(s_resp, plen)] = proto_sum(s_resp, PROTO_SUM_OFF(s_resp, plen));
+
+    if (++s_resp_gen == 0u) {
+        s_resp_gen = 1u;   /* 0 means "nothing to carry" on the RF uplink */
+    }
+}
+
+const uint8_t *proto_response(void)
+{
+    return s_resp;
+}
+
+uint8_t proto_response_gen(void)
+{
+    return s_resp_gen;
 }
 
 void proto_init(void)
