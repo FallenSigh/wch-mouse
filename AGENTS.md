@@ -22,6 +22,7 @@ cmake --build build --target wch-dongle
   - `cmake --build build --target flash-usb` / `flash-usb-dongle` — `wchisp -u flash`
   - `cmake --build build --target flash-serial` / `flash-serial-dongle` — `wchisp -s flash`
   - `cmake --build build --target flash-mrs` / `flash-mrs-dongle` — MounRiver `libmcuupdate.so` via `scripts/mrs_flash.py`; works even when the two-wire debug interface is closed. Needs `WCH_COMMUNICATION_LIB_DIR` or auto-discovery.
+- The mouse can reach the ROM ISP bootloader **without a power cycle**: hold the BOOT strap (PB22) for 3 s while USB is attached (`src/app/isp.c`). The ROM picks ISP over the application by checking whether CodeFlash starts with a program, so this erases block 0 and resets — the firmware does not survive and a download must follow, but the DataFlash record (radio mode, settings) does. Gated on VBUS so a press on battery cannot wipe the image; the dongle has no button and keeps the power-cycle flow.
 
 ### CMake cache trap (read before toggling options)
 

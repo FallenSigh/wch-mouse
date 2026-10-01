@@ -90,6 +90,7 @@ option(WCH_RF_ENABLE "Use the 2.4G RF transport instead of BLE (radio is shared)
 set(APP_SOURCES
     src/main.c
     src/app/radio_mode.c
+    src/app/isp.c
     src/app/bat.c
     src/app/motor.c
     src/app/mouse.c

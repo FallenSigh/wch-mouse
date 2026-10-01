@@ -17,6 +17,7 @@
 #include "paw3395.h"
 #include "paw3395_port.h"
 #include "bat.h"
+#include "isp.h"
 #include "transport.h"
 #include "radio_mode.h"
 
@@ -143,6 +144,7 @@ int main() {
     /* Which radio transport this boot runs, loaded from DataFlash. Must be
      * known before the transports are initialised. */
     radio_mode_init();
+    isp_init();
 
 #ifdef WCH_DCDC_ENABLE
     LOG_I("PWR", "dcdc hw0=0x%08X bit13=%u plan=0x%04X enabled=%u",
@@ -310,6 +312,7 @@ int main() {
             UART3_Init(1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY);
         }
 
+        isp_poll(s_tick_ms);
         transport_router_poll(s_tick_ms);
 
         bat_poll(s_tick_ms);
