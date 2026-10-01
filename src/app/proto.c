@@ -35,6 +35,8 @@
 #define PROTO_CMD_GET_RATE    0x42u
 #define PROTO_CMD_SET_RATE    0x43u
 #define PROTO_CMD_GET_BATTERY 0x24u
+#define PROTO_CMD_GET_PERIPH  0x60u
+#define PROTO_CMD_SET_PERIPH  0x61u
 #define PROTO_CMD_BIO_ACQ       0x50u
 #define PROTO_CMD_BIO_SLEEP     0x51u
 
@@ -238,6 +240,27 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             settings_set_oled(frame[3]);
 
             const uint8_t data[1] = { settings_get()->oled_enable };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        /* Whether the panel, the LED rail and the BIO module may run on battery
+         * as well as off the cable. */
+        case PROTO_CMD_GET_PERIPH: {
+            const uint8_t data[1] = { settings_get()->periph_batt };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_PERIPH: {
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            settings_set_periph_batt(frame[3]);
+
+            const uint8_t data[1] = { settings_get()->periph_batt };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }

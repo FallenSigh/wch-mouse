@@ -50,8 +50,14 @@ static const uint16_t s_rate_hz[] = { 1000u, 125u, 250u, 500u, 2000u, 4000u, 800
 /* Persist this long after the last change, so a burst of SETs costs one erase. */
 #define SETTINGS_SAVE_DELAY_MS    1000u
 
-/* Fixed on-flash layout. The per-link report rates reuse the two reserved bytes,
- * so the record stays 16 bytes and an older record stays valid. */
+/* Peripherals may be asked to run on battery too. Off by default: they are the
+ * biggest standing loads and the cable is what normally justifies them. */
+#define SETTINGS_DEF_PERIPH_BATT  0u
+
+/* Fixed on-flash layout. The per-link report rates reuse the two reserved bytes
+ * and periph_batt is appended, so a record written before either existed still
+ * lines up field for field: those bytes read back as 0xFF from the erase and the
+ * per-field checks below fall back to the defaults. */
 typedef struct __attribute__((packed)) {
     uint8_t  magic;
     uint8_t  report_rate_rf_idx;
@@ -68,6 +74,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  oled_enable;
     uint8_t  report_rate_idx;
     uint8_t  report_rate_ble_idx;
+    uint8_t  periph_batt;
 } settings_record_t;
 
 static struct paw3395_dev *s_paw;
@@ -87,6 +94,7 @@ static settings_t s_cur = {
     .report_rate_idx     = SETTINGS_DEF_RATE_IDX,
     .report_rate_rf_idx  = SETTINGS_DEF_RATE_RF_IDX,
     .report_rate_ble_idx = SETTINGS_DEF_RATE_BLE_IDX,
+    .periph_batt         = SETTINGS_DEF_PERIPH_BATT,
 };
 
 static bool     s_dirty;
@@ -119,6 +127,7 @@ static void settings_save(void)
     rec.oled_enable    = s_cur.oled_enable;
     rec.report_rate_idx = s_cur.report_rate_idx;
     rec.report_rate_ble_idx = s_cur.report_rate_ble_idx;
+    rec.periph_batt    = s_cur.periph_batt;
 
     er = EEPROM_ERASE(SETTINGS_FLASH_OFF, EEPROM_BLOCK_SIZE);
     wr = EEPROM_WRITE(SETTINGS_FLASH_OFF, (uint8_t *)&rec, sizeof(rec));
@@ -159,6 +168,7 @@ void settings_init(struct paw3395_dev *paw)
     s_cur.report_rate_idx     = (rec.report_rate_idx < RATE_COUNT) ? rec.report_rate_idx : SETTINGS_DEF_RATE_IDX;
     s_cur.report_rate_rf_idx  = (rec.report_rate_rf_idx < RATE_COUNT) ? rec.report_rate_rf_idx : SETTINGS_DEF_RATE_RF_IDX;
     s_cur.report_rate_ble_idx = (rec.report_rate_ble_idx < RATE_COUNT) ? rec.report_rate_ble_idx : SETTINGS_DEF_RATE_BLE_IDX;
+    s_cur.periph_batt    = (rec.periph_batt <= 1u) ? rec.periph_batt : SETTINGS_DEF_PERIPH_BATT;
 
     LOG_I("SET", "loaded cpi=%u mode=%u lift=%u bio=%u rgb=%u/%u/%u oled=%u rate=%u", (unsigned)s_cur.cpi,
           (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut, (unsigned)s_cur.bio_acquire,
@@ -171,13 +181,21 @@ const settings_t *settings_get(void)
     return &s_cur;
 }
 
+/* The panel, the rail and the BIO module run off the cable, or on battery when
+ * the user has overridden the policy. Both the RGB config and the peripheral
+ * policy ask this, so they cannot disagree about what "on" means. */
+static bool settings_periph_powered(void)
+{
+    return bat_power_good() || (s_cur.periph_batt != 0u);
+}
+
 static void settings_apply_rgb(void)
 {
     const rgb_fx_cfg_t cfg = {
         /* `enable` also carries the battery gate, which drops the idle
          * animation; `transient` follows the user's switch alone so a mode
          * switch still flashes while untethered. */
-        .enable     = (s_cur.rgb_enable != 0u) && bat_power_good(),
+        .enable     = (s_cur.rgb_enable != 0u) && settings_periph_powered(),
         .transient  = (s_cur.rgb_enable != 0u),
         .effect     = s_cur.rgb_effect,
         .brightness = s_cur.rgb_brightness,
@@ -200,15 +218,15 @@ void settings_apply(void)
 
 void settings_apply_peripherals(void)
 {
-    const bool tethered = bat_power_good();
+    const bool powered = settings_periph_powered();
 
-    if ((s_cur.oled_enable != 0u) && tethered) {
+    if ((s_cur.oled_enable != 0u) && powered) {
         (void)oled_set_enable(true);
     } else {
         (void)oled_set_enable(false);
     }
 
-    if ((s_cur.bio_acquire != 0u) && tethered) {
+    if ((s_cur.bio_acquire != 0u) && powered) {
         /* Two passes. Measured on hardware: the module drops the first command
          * pair after a wake - starting it used to take two host commands - and
          * there is no acknowledgement to retry against, so the pair is simply
@@ -290,6 +308,23 @@ void settings_set_oled(uint8_t on)
     s_cur.oled_enable = (on != 0u) ? 1u : 0u;
     settings_apply_peripherals();
     settings_dirty();
+}
+
+void settings_set_periph_batt(uint8_t on)
+{
+    s_cur.periph_batt = (on != 0u) ? 1u : 0u;
+    settings_apply_peripherals();
+    settings_dirty();
+}
+
+bool settings_periph_on_battery(void)
+{
+    return s_cur.periph_batt != 0u;
+}
+
+bool settings_periph_any_enabled(void)
+{
+    return (s_cur.oled_enable != 0u) || (s_cur.bio_acquire != 0u) || (s_cur.rgb_enable != 0u);
 }
 
 /* Pick the supported rate closest to the request, so the host can send any Hz. */

@@ -182,6 +182,14 @@ bool power_poll(uint32_t now_ms)
         return false;
     }
 
+    /* The peripherals policy can keep the panel, the rail and the BIO module
+     * live on battery, and standby_park() assumes they are already dark - do
+     * not sleep with them up. */
+    if (settings_periph_on_battery() && settings_periph_any_enabled()) {
+        power_note_activity(now_ms);
+        return false;
+    }
+
     const bool idle = ((now_ms - s_idle_from_ms) >= POWER_IDLE_MS);
 
     /* BLE has no standby: it cannot deep-sleep (the link is kept alive by

@@ -26,6 +26,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  report_rate_idx;
     uint8_t  report_rate_rf_idx;
     uint8_t  report_rate_ble_idx;
+    uint8_t  periph_batt;   /* 0/1: panel/rail/BIO may run on battery */
 } settings_t;
 
 void settings_init(struct paw3395_dev *paw);
@@ -34,10 +35,12 @@ const settings_t *settings_get(void);
 /* Write the whole record to the sensor and the BIO module (boot path). */
 void settings_apply(void);
 
-/* Apply the panel / LED rail / BIO module policy: all three only run while the
- * cable is in, because they are the biggest standing loads and tethered means
- * there is no battery to protect. Call at boot (before the USB device layer,
- * the panel bring-up blocks), on a VBUS change and on a config change. */
+/* Apply the panel / LED rail / BIO module policy. Normally all three run only
+ * while the cable is in, because they are the biggest standing loads and
+ * tethered means there is no battery to protect; setting periph_batt lifts that
+ * gate so the user's own oled/bio/rgb switches decide. Call at boot (before the
+ * USB device layer, the panel bring-up blocks), on a VBUS change and on a
+ * config change. */
 void settings_apply_peripherals(void);
 
 /* Field updates: apply to the hardware now, persist after they settle. */
@@ -48,6 +51,11 @@ void settings_set_bio(uint8_t on);
 void settings_set_rgb(uint8_t enable, uint8_t effect, uint8_t brightness,
                       uint8_t r, uint8_t g, uint8_t b);
 void settings_set_oled(uint8_t on);
+
+/* Let the panel, the LED rail and the BIO module run on battery too. */
+void settings_set_periph_batt(uint8_t on);
+bool settings_periph_on_battery(void);
+bool settings_periph_any_enabled(void);
 
 /* Report rate, one per link. Each is set and persisted independently, so
  * switching radio modes keeps every link's own rate. The unsuffixed pair

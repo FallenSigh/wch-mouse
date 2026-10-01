@@ -54,6 +54,8 @@ CMD_GET_RATE = 0x42
 CMD_SET_RATE = 0x43
 CMD_BIO_ACQ = 0x50
 CMD_BIO_SLEEP = 0x51
+CMD_GET_PERIPH = 0x60
+CMD_SET_PERIPH = 0x61
 
 STATUS = {
     0x00: "OK",
@@ -189,6 +191,8 @@ def main() -> int:
     p.add_argument("value", type=int, choices=(0, 1))
     p = sub.add_parser("bio-sleep", help="BIO sleep on/off")
     p.add_argument("value", type=int, choices=(0, 1))
+    p = sub.add_parser("periph", help="panel/rail/BIO on battery: get, or set 0/1")
+    p.add_argument("value", nargs="?", type=int, choices=(0, 1))
     p = sub.add_parser("raw", help="send an arbitrary command with a hex payload")
     p.add_argument("cmd", type=lambda s: int(s, 0))
     p.add_argument("payload", nargs="*", help="payload bytes, e.g. 40 06")
@@ -275,6 +279,13 @@ def main() -> int:
                 st, d = transact(dev, CMD_SET_OLED, bytes([opts.value]), seq=opts.seq)
             ok(st)
             print("oled", "on" if d[0] else "off")
+        elif cmd == "periph":
+            if opts.value is None:
+                st, d = transact(dev, CMD_GET_PERIPH, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_PERIPH, bytes([opts.value]), seq=opts.seq)
+            ok(st)
+            print("peripherals on battery", "allowed" if d[0] else "off")
         elif cmd == "rate":
             link = bytes([LINKS[opts.link]])
             if opts.value is None:
