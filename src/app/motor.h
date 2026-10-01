@@ -19,6 +19,7 @@
 #ifndef __MOTOR_H__
 #define __MOTOR_H__
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -38,13 +39,17 @@ void motor_off(void);
  * spin up and actually be felt, which the two short test bursts were not. */
 #define MOTOR_MODE_SWITCH_MS  100u
 
-/* One-shot pulse: the motor runs for `ms` and motor_poll() ends it. The caller
- * never waits - a mode switch starts one and carries straight on. */
-void motor_pulse(uint32_t now_ms, uint32_t ms);
+/* One-shot pulse: the motor runs for `ms` and motor_poll() ends it, with 0
+ * meaning "off now". No clock is needed at the call site, so anything can start
+ * one - a button handler or the host's Motor command - and none of them wait. */
+void motor_pulse(uint32_t ms);
 
 /* Ends a pulse once its window has elapsed. Must be called from the main loop:
  * without it a pulse would never stop. */
 void motor_poll(uint32_t now_ms);
+
+/* True while a pulse is still running. */
+bool motor_active(void);
 
 #ifdef __cplusplus
 }

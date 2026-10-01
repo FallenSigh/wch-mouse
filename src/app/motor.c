@@ -24,7 +24,11 @@ void motor_init(void)
     GPIOB_ModeCfg(GPIO_Pin_0, GPIO_ModeOut_PP_5mA);
 }
 
-static uint32_t s_until;   /* 0 while idle; a deadline while a pulse runs */
+/* Counted down rather than compared against a deadline, so starting a pulse
+ * needs no clock: the config channel runs in an ISR and could not supply one. */
+static uint32_t s_left_ms;   /* 0 while idle */
+static uint32_t s_last_ms;   /* poll time of the last decrement */
+static bool     s_running;
 
 void motor_on(void)
 {
@@ -33,20 +37,49 @@ void motor_on(void)
 
 void motor_off(void)
 {
-    s_until = 0u;   /* an explicit off cancels a pulse in flight */
+    s_running  = false;
+    s_left_ms  = 0u;
     GPIOB_ResetBits(GPIO_Pin_0);
 }
 
-void motor_pulse(uint32_t now_ms, uint32_t ms)
+void motor_pulse(uint32_t ms)
 {
+    if (ms == 0u) {
+        motor_off();
+        return;
+    }
+
     motor_on();
-    s_until = now_ms + ms;
+    s_running = true;
+    s_left_ms = ms;
+    s_last_ms = 0u;   /* the next poll latches the clock */
 }
 
 void motor_poll(uint32_t now_ms)
 {
-    if ((s_until != 0u) && ((int32_t)(now_ms - s_until) >= 0)) {
-        s_until = 0u;
-        motor_off();
+    uint32_t elapsed;
+
+    if (!s_running) {
+        return;
     }
+
+    if (s_last_ms == 0u) {
+        s_last_ms = now_ms;
+        return;
+    }
+
+    elapsed   = now_ms - s_last_ms;
+    s_last_ms = now_ms;
+
+    if (elapsed >= s_left_ms) {
+        motor_off();
+        return;
+    }
+
+    s_left_ms -= elapsed;
+}
+
+bool motor_active(void)
+{
+    return s_running;
 }

@@ -105,7 +105,7 @@ static void air_mouse_enter(uint32_t now_ms)
 {
     /* Fire the feedback first and do not wait for it: the hand-off below blocks
      * for tens of ms, so a blocking buzz would only start afterwards. */
-    motor_pulse(now_ms, MOTOR_MODE_SWITCH_MS);
+    motor_pulse(MOTOR_MODE_SWITCH_MS);
 
     /* Hand the cursor over: optical sensor down, gyro up, then start measuring
      * the zero-rate bias before any motion is reported. The optical sensor's
@@ -132,7 +132,7 @@ static void air_mouse_exit(uint32_t now_ms)
     uint8_t gyr = BMI2_GYRO;
 
     /* Same again: the optical bring-up below blocks for tens of ms. */
-    motor_pulse(now_ms, MOTOR_MODE_SWITCH_MS);
+    motor_pulse(MOTOR_MODE_SWITCH_MS);
 
     /* IMU suspended: nothing reads the gyro until the next entry. */
     if (bmi270_sensor_disable(&gyr, 1, s_cfg.bmi) != BMI2_OK) {

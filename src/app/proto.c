@@ -12,6 +12,7 @@
 
 #include "bat.h"
 #include "bio.h"
+#include "motor.h"
 #include "paw3395.h"
 #include "radio_mode.h"
 #include "settings.h"
@@ -37,6 +38,12 @@
 #define PROTO_CMD_GET_BATTERY 0x24u
 #define PROTO_CMD_GET_PERIPH  0x60u
 #define PROTO_CMD_SET_PERIPH  0x61u
+#define PROTO_CMD_GET_MOTOR   0x62u
+#define PROTO_CMD_SET_MOTOR   0x63u
+
+/* Longest single buzz the host can ask for. A stuck-on ERM is 85 mA and gets
+ * hot, so the request is capped rather than trusted. */
+#define PROTO_MOTOR_MAX_MS    30000u
 #define PROTO_CMD_BIO_ACQ       0x50u
 #define PROTO_CMD_BIO_SLEEP     0x51u
 
@@ -276,6 +283,35 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             settings_set_periph_batt(frame[3]);
 
             const uint8_t data[1] = { settings_get()->periph_batt };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        /* The vibration motor as a one-shot duration in ms, 0 stopping it now.
+         * The pulse needs no clock, so it can be started from here, and
+         * motor_poll() in the main loop is what ends it. */
+        case PROTO_CMD_GET_MOTOR: {
+            const uint8_t data[1] = { motor_active() ? 1u : 0u };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_MOTOR: {
+            uint16_t ms;
+
+            if (plen < 2u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            ms = (uint16_t)(frame[3] | (frame[4] << 8));
+            if (ms > PROTO_MOTOR_MAX_MS) {
+                ms = PROTO_MOTOR_MAX_MS;
+            }
+
+            motor_pulse(ms);
+
+            const uint8_t data[1] = { motor_active() ? 1u : 0u };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }

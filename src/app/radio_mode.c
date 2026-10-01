@@ -145,7 +145,7 @@ void radio_mode_poll(uint32_t now_ms, bool combo_held)
 
             /* Announce it, then reset when the buzz ends. Non-blocking, and long
              * enough for the log line above to drain on its own. */
-            motor_pulse(now_ms, MOTOR_MODE_SWITCH_MS);
+            motor_pulse(MOTOR_MODE_SWITCH_MS);
             s_reset_at = now_ms + MOTOR_MODE_SWITCH_MS;
         }
         return;
