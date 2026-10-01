@@ -28,4 +28,28 @@ typedef struct __attribute__((packed)) {
 #define RF_PKT_LEN          (sizeof(RfPacket_t))
 #define RF_RX_MAX_LEN       RF_PKT_LEN
 
+/* Reverse direction: the dongle answers every packet it receives with one of
+ * these, so the mouse gets a channel back without a hardware ACK (the RFIP
+ * exposes no way to load an ACK payload). Short on purpose - it has to make the
+ * whole round trip inside one 1 ms period. */
+#define RF_ACK_TYPE         0x7Eu        /* deliberately not RF_PKT_LEN */
+
+typedef struct __attribute__((packed)) {
+    uint8_t       type;      /* RF_ACK_TYPE */
+    uint8_t       length;    /* total frame length, incl. this 4-byte header */
+    uint8_t       seq;       /* last mouse seq this dongle saw */
+    uint8_t       resv;
+    uint16_t      rx_count;  /* packets received so far; the mouse differences it */
+} RfAck_t;
+
+#define RF_ACK_LEN          (sizeof(RfAck_t))
+
+/* Both ends must point the RFIP's RX DMA at a buffer this size. It is NOT the
+ * frame length: the vendor example documents a 264-byte minimum whatever
+ * rxMaxLen is, and a buffer sized for the frame lets the DMA run past it. That
+ * stays invisible until the tail lands on something live - sizing the reply
+ * buffer for its 6 bytes put ACK bytes into the TX buffer, which showed up as
+ * the cursor drifting steadily in one direction. */
+#define RF_RX_BUF_LEN       264u
+
 #endif /* __RF_CFG_H__ */

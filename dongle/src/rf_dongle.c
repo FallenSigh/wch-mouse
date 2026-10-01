@@ -19,9 +19,11 @@
 
 #define HID_EP  DEF_UEP4
 
-static RfPacket_t s_rx;         /* RF DMA target */
+static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN];   /* RF DMA target */
 static RfPacket_t s_mail;       /* last complete packet, consumed by the poll */
+static RfAck_t    s_ack;        /* what we DMA back to the mouse */
 static rfipRx_t   s_rx_param;
+static rfipTx_t   s_tx_param;
 
 static volatile bool s_rx_ready;
 static uint32_t      s_rx_n;
@@ -37,11 +39,25 @@ static void rf_process_cb(rfRole_States_t sta, uint8_t id)
     (void)id;
 
     if (sta & RF_STATE_RX) {
-        s_mail     = s_rx;
+        const RfPacket_t *pkt = (const RfPacket_t *)s_rx;
+
+        s_mail     = *pkt;
         s_rx_ready = true;
-        rf_rx_start();
+        s_rx_n++;
+
+        /* Answer straight away: the mouse is waiting for this inside the same
+         * period it sent in, so the reply goes out from the callback and the
+         * receiver is only re-armed once it has left. */
+        s_ack.type     = RF_ACK_TYPE;
+        s_ack.length   = RF_ACK_LEN;
+        s_ack.seq      = pkt->seq;
+        s_ack.resv     = 0;
+        s_ack.rx_count = (uint16_t)s_rx_n;
+
+        RFIP_SetTxStart();
+        RFIP_SetTxParm(&s_tx_param);
     }
-    if (sta & RF_STATE_RX_CRCERR) {
+    if ((sta & RF_STATE_TX_FINISH) || (sta & RF_STATE_TIMEOUT) || (sta & RF_STATE_RX_CRCERR)) {
         rf_rx_start();
     }
 }
@@ -51,7 +67,8 @@ void rf_dongle_init(void)
     rfRoleConfig_t conf = {
         .TxPower     = LL_TX_POWEER_4_DBM,
         .rfProcessCB = rf_process_cb,
-        .processMask = RF_STATE_RX | RF_STATE_RX_CRCERR,
+        .processMask = RF_STATE_RX | RF_STATE_RX_CRCERR | RF_STATE_TX_FINISH
+                     | RF_STATE_TIMEOUT,
     };
 
     RFRole_SwitchMode(RFIP_MODE_RF_BASIC);
@@ -74,6 +91,13 @@ void rf_dongle_init(void)
     s_rx_param.rxMaxLen      = RF_RX_MAX_LEN;
     s_rx_param.timeOut       = 0;
 
+    s_tx_param.accessAddress = RF_ACCESS_ADDRESS;
+    s_tx_param.crcInit       = RF_CRC_INIT;
+    s_tx_param.frequency     = RF_CHANNEL;
+    s_tx_param.properties    = LLE_MODE_PHY_2M;
+    s_tx_param.sendCount     = 1;
+    s_tx_param.txDMA         = (uint32_t)&s_ack;
+
     PFIC_EnableIRQ(BLEB_IRQn);
     PFIC_EnableIRQ(BLEL_IRQn);
 
@@ -95,7 +119,6 @@ void rf_dongle_poll(void)
 
         /* Throttled raw dump (~every 0.5 s at 1 kHz) to check the on-air
          * alignment: type, length, seq, resv, then the 6 report bytes. */
-        ++s_rx_n;
         if (s_rx_n <= 5u || (s_rx_n % 500u) == 0u) {
             const uint8_t *p = (const uint8_t *)&s_mail;
 

@@ -27,15 +27,21 @@
 static MouseReport_t s_acc;        /* motion accumulated since the last packet */
 static RfPacket_t    s_tx;         /* what the RFIP DMAs out - kept separate from
                                     * s_acc so the async DMA never races the reset */
+static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN];
 static bool       s_have;
 static uint8_t    s_seq;
 static uint32_t   s_tx_n;
 static uint32_t   s_tx_ms;
 static bool       s_up;
 static uint32_t   s_tx_count;
+static uint32_t   s_ack_n;
+static uint16_t   s_peer_rx;
 static uint32_t   s_stat_ms;
+static uint32_t   s_dbg_tx;
+static uint16_t   s_dbg_peer;
 
 static rfipTx_t   s_tx_param;
+static rfipRx_t   s_rx_param;
 
 static void rf_process_cb(rfRole_States_t sta, uint8_t id)
 {
@@ -43,6 +49,19 @@ static void rf_process_cb(rfRole_States_t sta, uint8_t id)
 
     if (sta & RF_STATE_TX_FINISH) {
         s_tx_count++;
+
+        /* The dongle answers every packet and the answer lands in the tail of
+         * this same period, so listen for it now. Missing it is not fatal: the
+         * next rf_poll() send re-arms TX either way. */
+        RFIP_SetRx(&s_rx_param);
+    }
+    if (sta & RF_STATE_RX) {
+        const RfAck_t *ack = (const RfAck_t *)s_rx;
+
+        if ((ack->type == RF_ACK_TYPE) && (ack->length == RF_ACK_LEN)) {
+            s_peer_rx = ack->rx_count;
+            s_ack_n++;
+        }
     }
 }
 
@@ -57,7 +76,8 @@ static bool rf_init(void)
     rfRoleConfig_t conf = {
         .TxPower     = LL_TX_POWEER_4_DBM,
         .rfProcessCB = rf_process_cb,
-        .processMask = RF_STATE_TX_FINISH | RF_STATE_TIMEOUT,
+        .processMask = RF_STATE_TX_FINISH | RF_STATE_TIMEOUT | RF_STATE_RX
+                     | RF_STATE_RX_CRCERR,
     };
 
     if (RFRole_SwitchMode(RFIP_MODE_RF_BASIC) != SUCCESS) {
@@ -81,6 +101,14 @@ static bool rf_init(void)
     s_tx_param.properties    = LLE_MODE_PHY_2M;
     s_tx_param.sendCount     = 1;
     s_tx_param.txDMA         = (uint32_t)&s_tx;
+
+    s_rx_param.accessAddress = RF_ACCESS_ADDRESS;
+    s_rx_param.crcInit       = RF_CRC_INIT;
+    s_rx_param.frequency     = RF_CHANNEL;
+    s_rx_param.properties    = LLE_MODE_PHY_2M;
+    s_rx_param.rxDMA         = (uint32_t)&s_rx;
+    s_rx_param.rxMaxLen      = RF_ACK_LEN;
+    s_rx_param.timeOut       = 0;
 
     PFIC_EnableIRQ(BLEB_IRQn);
     PFIC_EnableIRQ(BLEL_IRQn);
@@ -118,9 +146,20 @@ static void rf_poll(uint32_t now_ms)
     }
 
     if (now_ms - s_stat_ms >= 5000u) {
-        s_stat_ms = now_ms;
-        LOG_I("RF", "tx %u in 5s", (unsigned)s_tx_count);
+        const uint32_t dt = s_tx_n - s_dbg_tx;
+        const uint16_t dp = (uint16_t)(s_peer_rx - s_dbg_peer);
+
+        s_dbg_tx   = s_tx_n;
+        s_dbg_peer = s_peer_rx;
+        s_stat_ms  = now_ms;
+
+        /* tx - peer is what the dongle never got; ack is how many replies we
+         * caught, so the two together separate air loss from a missed round
+         * trip. */
+        LOG_I("RF", "5s: tx %u ack %u peer +%u/%u", (unsigned)s_tx_count,
+              (unsigned)s_ack_n, (unsigned)dp, (unsigned)dt);
         s_tx_count = 0;
+        s_ack_n    = 0;
     }
 
     if (!s_have || (now_ms - s_tx_ms < RF_TX_PERIOD_MS)) {
