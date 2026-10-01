@@ -12,15 +12,22 @@
 
 #include "rgb.h"
 
-/* Solid mode colour for this long after boot, so a power-up says which radio
- * it is running without anyone having to read a log. */
-#define RGB_FX_ANNOUNCE_MS   1000u
+/* How long a mode-switch flash stays lit: the window right after boot, which is
+ * what a radio-mode switch looks like since it resets into the new mode, and
+ * the one an air-mouse toggle opens. */
+#define RGB_FX_FLASH_MS      1000u
 
-/* Brighter than the 1/255 idle underglow, but not at full blast. */
+/* Flash brightness. 16 is the dimmest that still reads as a blink: at 1 the "on"
+ * half of the blink is indistinguishable from the "off" half on a WS2812, while
+ * still being cheap enough to show on battery, where the underglow is cut. */
+#define RGB_FX_DIM           16u
+
+/* The sustained air-mouse colour: brighter than the idle underglow, but not at
+ * full blast. */
 #define RGB_FX_BRIGHT        48u
 
-#define RGB_FX_PERIOD_MS     33u    /* ~30 Hz refresh            */
-#define RGB_FX_BLINK_MASK    0x100u /* toggles the preview ~2 Hz */
+#define RGB_FX_PERIOD_MS     33u    /* ~30 Hz refresh          */
+#define RGB_FX_BLINK_MASK    0x100u /* toggles the flash ~2 Hz */
 
 static bool     s_started;
 static uint32_t s_base_ms;
@@ -29,6 +36,7 @@ static uint16_t s_hue;
 
 static rgb_fx_cfg_t s_cfg = {
     .enable     = true,
+    .transient  = true,
     .effect     = RGB_FX_EFFECT_HUE,
     .brightness = 1u,
     .r          = 255u,
@@ -82,16 +90,34 @@ static void rgb_fx_hue(uint16_t hue)
 
 void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
 {
-    static bool s_rail_on;
+    static bool     s_rail_on;
+    static bool     s_air_prev;
+    static uint32_t s_flash_until;
+    bool            transient;
 
     if (!s_started) {
-        s_started = true;
-        s_base_ms = now_ms;
-        s_last_ms = now_ms;
+        s_started  = true;
+        s_air_prev = air_mouse;
+        s_base_ms  = now_ms;
+        s_last_ms  = now_ms;
     }
 
-    /* Cutting the rail suppresses everything, transient states included. */
-    if (!s_cfg.enable) {
+    /* Air-mouse is a level but the flash belongs to the edge, so remember when
+     * it changed and keep the window open for a fixed time. */
+    if (air_mouse != s_air_prev) {
+        s_air_prev    = air_mouse;
+        s_flash_until = now_ms + RGB_FX_FLASH_MS;
+    }
+
+    /* Mode-switch feedback outranks the rail gate below, and runs dim: on
+     * battery the underglow is cut, but the switch still has to announce
+     * itself. */
+    transient = s_cfg.transient
+             && (((now_ms - s_base_ms) < RGB_FX_FLASH_MS)
+                 || ((int32_t)(s_flash_until - now_ms) > 0)
+                 || switch_armed);
+
+    if (!s_cfg.enable && !transient) {
         if (s_rail_on) {
             s_rail_on = false;
             rgb_set_enable(false);
@@ -109,16 +135,19 @@ void rgb_fx_poll(uint32_t now_ms, bool ble, bool switch_armed, bool air_mouse)
     }
     s_last_ms = now_ms;
 
-    if (now_ms - s_base_ms < RGB_FX_ANNOUNCE_MS) {
-        rgb_set_brightness(RGB_FX_BRIGHT);
-        rgb_fx_mode_colour(ble);
+    if (transient) {
+        rgb_set_brightness((now_ms & RGB_FX_BLINK_MASK) ? RGB_FX_DIM : 0u);
+
+        if (air_mouse) {
+            rgb_fx_air_colour();
+        } else if (switch_armed) {
+            rgb_fx_mode_colour(!ble);   /* the mode a release would switch to */
+        } else {
+            rgb_fx_mode_colour(ble);
+        }
     } else if (air_mouse) {
         rgb_set_brightness(RGB_FX_BRIGHT);
         rgb_fx_air_colour();
-    } else if (switch_armed) {
-        rgb_set_brightness((now_ms & RGB_FX_BLINK_MASK) ? RGB_FX_BRIGHT
-                                                        : (RGB_FX_BRIGHT / 8u));
-        rgb_fx_mode_colour(!ble);
     } else if (s_cfg.effect == RGB_FX_EFFECT_SOLID) {
         rgb_set_brightness(s_cfg.brightness);
         rgb_set_all(s_cfg.r, s_cfg.g, s_cfg.b);

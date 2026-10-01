@@ -174,7 +174,11 @@ const settings_t *settings_get(void)
 static void settings_apply_rgb(void)
 {
     const rgb_fx_cfg_t cfg = {
+        /* `enable` also carries the battery gate, which drops the idle
+         * animation; `transient` follows the user's switch alone so a mode
+         * switch still flashes while untethered. */
         .enable     = (s_cur.rgb_enable != 0u) && bat_power_good(),
+        .transient  = (s_cur.rgb_enable != 0u),
         .effect     = s_cur.rgb_effect,
         .brightness = s_cur.rgb_brightness,
         .r          = s_cur.rgb_r,
