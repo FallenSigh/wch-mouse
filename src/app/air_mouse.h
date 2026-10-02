@@ -17,8 +17,9 @@
  * can never strand a user without their normal pointer.
  *
  * mouse.c owns the report and asks air_mouse_active() which device to read.
- * This module owns the combo detection, the sensor hand-off, the gyro
- * zero-bias calibration and the RGB/LRA feedback that announces each switch.
+ * This module owns the combo detection, the sensor hand-off, the attitude
+ * pipeline (bias -> ZARU -> Mahony -> One Euro -> relative counts), the click
+ * guard and the haptic feedback that announces each switch.
  */
 
 struct bmi2_dev;
@@ -36,10 +37,10 @@ typedef struct {
 
 void air_mouse_init(const air_mouse_cfg_t *cfg);
 
-/* Call once per scan with the debounced button bitmap. Detects the side-1 +
- * side-2 hold, performs the switch at the 2 s mark (once per hold) and
- * advances the haptic pulse timers. */
-void air_mouse_poll(uint32_t now_ms, uint8_t buttons);
+/* Call once per scan. `buttons` is the debounced bitmap (side-1 + side-2 hold
+ * switches the mode at the 2 s mark); `raw_buttons` is the undebounced bitmap,
+ * used so the click guard freezes the pointer on the press edge. */
+void air_mouse_poll(uint32_t now_ms, uint8_t raw_buttons, uint8_t buttons);
 
 /* True while the gyroscope owns the cursor. */
 bool air_mouse_active(void);

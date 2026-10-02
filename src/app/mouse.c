@@ -186,7 +186,7 @@ void mouse_scan(uint32_t now_ms)
 
     /* Air-mouse mode owns the side-1 + side-2 combo it toggles on, so swallow
      * those bits while it is held rather than clicking back/forward. */
-    air_mouse_poll(now_ms, buttons);
+    air_mouse_poll(now_ms, raw_btn, buttons);
     if (air_mouse_combo_held()) {
         buttons &= (uint8_t)~(HID_BTN_BACK | HID_BTN_FWD);
     }
@@ -199,6 +199,10 @@ void mouse_scan(uint32_t now_ms)
     int16_t dy = 0;
 
     if (air_mouse_active()) {
+        /* The middle button is the air-mouse clutch, so it is not reported as a
+         * middle click while the mode is active. */
+        buttons &= (uint8_t)~HID_BTN_MID;
+
         /* Gyro drives the cursor (already HID-sense). */
         air_mouse_read_motion(&dx, &dy);
     } else {
