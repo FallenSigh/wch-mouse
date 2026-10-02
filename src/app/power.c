@@ -30,6 +30,7 @@
 #include "bio.h"
 #include "log.h"
 #include "motor.h"
+#include "mouse.h"
 #include "oled.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
@@ -87,10 +88,12 @@ static void standby_park(void)
     PWR_SafeClkCfg(DISABLE, 0x7);
 }
 
-/* PA7 is already an armed falling-edge interrupt; GPIO wake turns it into a
- * sleep wake-up. BAT is the charger/cable escape hatch. */
+/* PA7 is already an armed falling-edge interrupt; the button pins are armed
+ * here. GPIO wake turns either into a sleep wake-up. BAT is the charger/cable
+ * escape hatch. */
 static void standby_wake_cfg(void)
 {
+    mouse_wake_arm();
     PWR_PeriphWakeUpCfg(ENABLE, RB_SLP_GPIO_WAKE, Long_Delay);
     PWR_PeriphWakeUpCfg(ENABLE, RB_SLP_BAT_WAKE, Long_Delay);
 }
@@ -107,14 +110,16 @@ static void standby_sleep(void)
     SYS_DisableAllIrq(&irq_status);
     wake_ctrl = R8_SLP_WAKE_CTRL;
 
-    /* SYS_DisableAllIrq() clears EVERY PFIC enable, the motion pin's included,
-     * and a PMU wake source whose interrupt is disabled never fires. Without
-     * this the mouse sleeps and the sensor can never wake it - put that one
-     * interrupt straight back. */
+    /* SYS_DisableAllIrq() clears EVERY PFIC enable, the motion pin's and the
+     * buttons' included, and a PMU wake source whose interrupt is disabled
+     * never fires. Without this the mouse sleeps and never wakes on input -
+     * put those interrupts straight back. */
     PFIC_EnableIRQ(GPIO_A_IRQn);
+    PFIC_EnableIRQ(GPIO_B_IRQn);
 
-    /* No RTC wake: the sensor and the cable are the only things that should
-     * bring us back, and keeping the 32K alive for nothing costs current. */
+    /* No RTC wake: the sensor, the buttons and the cable are the only things
+     * that should bring us back, and keeping the 32K alive for nothing costs
+     * current. */
     sys_safe_access_enable();
     R8_SLP_WAKE_CTRL = RB_WAKE_EV_MODE | RB_SLP_GPIO_WAKE | RB_SLP_BAT_WAKE;
     sys_safe_access_disable();
@@ -161,6 +166,7 @@ static void standby_restore(void)
 
     /* Unparks the ISR and drains anything the wake held back. */
     paw3395_motion_start();
+    mouse_wake_disarm();
 }
 
 bool power_poll(uint32_t now_ms)

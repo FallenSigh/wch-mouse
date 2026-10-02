@@ -29,6 +29,11 @@ void mouse_init(struct paw3395_dev *sensor);
 void mouse_scan(uint32_t now_ms);
 void mouse_set_cpi(uint16_t cpi);
 
+/* Arm/disarm the button pins as a standby wake source. Only PB0-PB15 can raise
+ * a GPIOB interrupt, so the encoder's B phase (PB19) is not included. */
+void mouse_wake_arm(void);
+void mouse_wake_disarm(void);
+
 #ifdef __cplusplus
 }
 #endif

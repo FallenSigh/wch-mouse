@@ -19,9 +19,18 @@
 #define INPUT_ALL_PINS    (BTN_LEFT_PIN | BTN_RIGHT_PIN | BTN_MID_PIN \
                            | BTN_SIDE1_PIN | BTN_SIDE2_PIN | ENC_A_PIN | ENC_B_PIN)
 
+/* Standby wake-on-input. Only PB0-PB15 carry a GPIOB interrupt bit, so the
+ * encoder's B phase (PB19) cannot be a wake source. */
+#define INPUT_WAKE_PINS   ((uint16_t)(BTN_LEFT_PIN | BTN_RIGHT_PIN | BTN_MID_PIN \
+                                      | BTN_SIDE1_PIN | BTN_SIDE2_PIN | ENC_A_PIN))
+
 static volatile uint8_t s_btn_stable;
 static volatile uint8_t s_btn_raw_prev;
 static volatile uint32_t s_btn_raw_ms;
+
+/* Set by the GPIOB wake ISR so a press that is over before the first scan
+ * still counts as activity instead of being lost. */
+static volatile bool s_btn_wake;
 
 static struct paw3395_dev *s_sensor;
 
@@ -125,6 +134,25 @@ void mouse_init(struct paw3395_dev *sensor)
     LOG_I("MOUSE", "L=PB7 R=PB1 M=PB9 S1=PB11 S2=PB4 ENC_A=PB8 ENC_B=PB19");
 }
 
+void mouse_wake_arm(void)
+{
+    GPIOB_ITModeCfg(INPUT_WAKE_PINS, GPIO_ITMode_FallEdge);
+}
+
+void mouse_wake_disarm(void)
+{
+    R16_PB_INT_EN &= (uint16_t)~INPUT_WAKE_PINS;
+    R16_PB_INT_IF = INPUT_WAKE_PINS;
+}
+
+/* Runs from RAM: in standby this fires as the wake-up event, when the flash and
+ * the 32M clock are still down, so it only records the edge and clears it. */
+__INTERRUPT __HIGH_CODE void GPIOB_IRQHandler(void)
+{
+    R16_PB_INT_IF = INPUT_WAKE_PINS;
+    s_btn_wake = true;
+}
+
 void mouse_scan(uint32_t now_ms)
 {
     /* The caller gates the cadence (the configured report rate), so every call
@@ -134,6 +162,12 @@ void mouse_scan(uint32_t now_ms)
 
     uint8_t raw_btn = 0;
     uint8_t active  = 0;
+
+    if (s_btn_wake) {
+        s_btn_wake = false;
+        active     = 1;
+    }
+
     if (!(pins & BTN_LEFT_PIN))   raw_btn |= HID_BTN_LEFT;
     if (!(pins & BTN_RIGHT_PIN))  raw_btn |= HID_BTN_RIGHT;
     if (!(pins & BTN_MID_PIN))    raw_btn |= HID_BTN_MID;
