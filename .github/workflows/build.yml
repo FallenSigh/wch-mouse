@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The WCH/MounRiver GCC (riscv32-wch-elf) is mandatory: the CH585 uses the
       # WCH `xw` ISA extension and the fork's --param=highcode-gen-section-name,
@@ -35,7 +35,7 @@ jobs:
 
       - name: Cache toolchain tarball
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/mrs-toolchain.tar.xz
           key: mrs-toolchain-${{ steps.meta.outputs.filename }}
@@ -70,7 +70,7 @@ jobs:
         run: cmake --build build
 
       - name: Upload firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware
           path: |
