@@ -1,18 +1,22 @@
-# wch-mouse / wch-dongle: give the logged-in user access to the hidraw nodes.
+# wch-mouse / wch-dongle: give the logged-in user access to the device nodes the
+# host tooling uses.
 #
-# The kernel exposes HID interfaces as /dev/hidrawN owned by root:root with
-# mode 0600, so scripts/mouse_proto.py fails with "Permission denied" unless
-# it runs as root. This rule grants access instead.
+# The kernel exposes HID interfaces as /dev/hidrawN owned by root:root with mode
+# 0600, so scripts/mouse_proto.py and the host app fail with "Permission denied"
+# unless they run as root. The wired mouse also exposes a USB CDC serial port
+# (/dev/ttyACM*, the BIO stream) owned by root:dialout with mode 0660; the host
+# app needs that too.
 #
-# ATTRS matches the USB device behind the hidraw node, so one rule covers every
+# ATTRS matches the USB device behind the node, so one hidraw rule covers every
 # interface it exposes -- the mouse input collection and the vendor Feature
 # collection. The dongle reports a different product id, so it needs its own
-# line; without it every --dongle command fails with "Permission denied".
+# line; without it every --dongle command fails with "Permission denied". Only
+# the mouse has a CDC interface, so there is a single tty line.
 #
 # Install:
 #   sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/
 #   sudo udevadm control --reload-rules
-#   sudo udevadm trigger --subsystem-match=hidraw
+#   sudo udevadm trigger
 # Re-plug the device if it is already attached.
 #
 # Note: 0x1a86 is WCH's vendor id (dev/prototype use); update the ids here if
@@ -20,3 +24,4 @@
 
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe0c", MODE="0666", TAG+="uaccess"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe0d", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="tty",    ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe0c", MODE="0666", TAG+="uaccess"

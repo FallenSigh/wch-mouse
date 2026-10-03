@@ -76,18 +76,20 @@ pnpm tauri build    # bundle for the current platform
 
 ## Device permissions (udev)
 
-The kernel exposes `/dev/hidrawN` as `root:root` mode `0600`, so the app cannot
-open the device as a normal user until the rule shipped in this repo is
-installed (it covers both product ids):
+The kernel exposes `/dev/hidrawN` as `root:root` mode `0600` and the wired
+mouse's CDC serial (`/dev/ttyACM*`, the BIO stream) as `root:dialout` mode
+`0660`, so the app cannot open either as a normal user until the rule shipped in
+this repo is installed (hidraw for both product ids, tty for the wired mouse):
 
 ```sh
 sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
-sudo udevadm trigger --subsystem-match=hidraw
+sudo udevadm trigger
 ```
 
 Re-plug the device if it is already attached. Without this the device picker
-lists the interfaces but `connect` fails with a permission error.
+lists the interfaces but `connect` fails with a permission error, and the BIO
+monitor's `Start` cannot open the serial port.
 
 ## BIO monitor
 

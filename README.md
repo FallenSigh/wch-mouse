@@ -134,9 +134,10 @@ no Report ID, 63 data bytes). Because HID gives the host no payload on a
 ```sh
 pip install hidapi
 
-# let the logged-in user reach the hidraw nodes (both product ids)
+# let the logged-in user reach the hidraw nodes (both product ids) and the
+# mouse's CDC serial (the host app's BIO stream)
 sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw
+sudo udevadm control --reload-rules && sudo udevadm trigger
 
 # wired (product id 0xFE0C)
 scripts/mouse_proto.py info

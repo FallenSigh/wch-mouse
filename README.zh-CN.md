@@ -129,9 +129,10 @@ dongle 没有按键，沿用断电流程。
 ```sh
 pip install hidapi
 
-# 让已登录用户访问 hidraw 节点（覆盖两个 product id）
+# 让已登录用户访问 hidraw 节点（覆盖两个 product id）以及鼠标的 CDC 串口
+# （上位机的 BIO 实时流）
 sudo cp scripts/99-wch-mouse.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw
+sudo udevadm control --reload-rules && sudo udevadm trigger
 
 # 有线（product id 0xFE0C）
 scripts/mouse_proto.py info
