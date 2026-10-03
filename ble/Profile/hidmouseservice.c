@@ -76,12 +76,12 @@ static const uint8_t hidInfo[HID_INFORMATION_LEN] = {
     (HID_FLAGS_REMOTE_WAKE | HID_FLAGS_NORMALLY_CONNECTABLE) // Flags
 };
 
-// HID Report Map characteristic value (mouse, 6 bytes, report ID 1)
+/* Mouse, 6 bytes, no Report ID: HidDev_sendNoti emits the report verbatim with
+ * no ID prefix, so the map must not declare one. */
 static const uint8_t hidReportMap[] = {
     0x05, 0x01,        /* Usage Page (Generic Desktop) */
     0x09, 0x02,        /* Usage (Mouse) */
     0xA1, 0x01,        /* Collection (Application) */
-    0x85, 0x01,        /*   Report ID (1) */
     0x09, 0x01,        /*   Usage (Pointer) */
     0xA1, 0x00,        /*   Collection (Physical) */
     0x05, 0x09,        /*     Usage Page (Button) */

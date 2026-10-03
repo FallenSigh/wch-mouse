@@ -29,7 +29,7 @@ extern "C" {
 #define HID_NUM_REPORTS        3
 
 // HID Report IDs for the service
-#define HID_RPT_ID_MOUSE_IN    1                      // Mouse input report ID (matches Report ID 1 in report map)
+#define HID_RPT_ID_MOUSE_IN    0                      // Mouse input report ID (no Report ID in the map)
 #define HID_RPT_ID_FEATURE     0                      // Feature report ID
 
 // HID feature flags
