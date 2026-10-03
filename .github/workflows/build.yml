@@ -1,0 +1,80 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The WCH/MounRiver GCC (riscv32-wch-elf) is mandatory: the CH585 uses the
+      # WCH `xw` ISA extension and the fork's --param=highcode-gen-section-name,
+      # neither of which a stock RISC-V GCC accepts. The official CDN needs a
+      # short-lived, caller-IP-bound signature, minted by this API.
+      - name: Resolve MounRiver toolchain version
+        id: meta
+        run: |
+          set -euo pipefail
+          meta=$(curl -fsSL 'https://api.mounriver.com/mountriver/api/version/fetchRecentOpenOcd?osType=LINUX&lang=zh')
+          echo "version=$(printf '%s' "$meta" | jq -r '.result[0].version')"          >> "$GITHUB_OUTPUT"
+          echo "filename=$(printf '%s' "$meta" | jq -r '.result[0].fileName')"        >> "$GITHUB_OUTPUT"
+          echo "resource_id=$(printf '%s' "$meta" | jq -r '.result[0].softResId')"    >> "$GITHUB_OUTPUT"
+
+      - name: Cache toolchain tarball
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mrs-toolchain.tar.xz
+          key: mrs-toolchain-${{ steps.meta.outputs.filename }}
+
+      - name: Download toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          url=$(curl -fsSL "https://api.mounriver.com/mountriver/api/version/getDownloadUrl?resourceId=${{ steps.meta.outputs.resource_id }}" | jq -r '.result')
+          echo "Downloading ${{ steps.meta.outputs.filename }} ..."
+          curl -fL --retry 3 -o "$RUNNER_TEMP/mrs-toolchain.tar.xz" "$url"
+          ls -l "$RUNNER_TEMP/mrs-toolchain.tar.xz"
+
+      - name: Extract toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wch"
+          tar -xf "$RUNNER_TEMP/mrs-toolchain.tar.xz" -C "$RUNNER_TEMP/wch"
+          gcc=$(find "$RUNNER_TEMP/wch" -type f -name riscv32-wch-elf-gcc | head -n1)
+          if [ -z "$gcc" ]; then
+            echo "::error::riscv32-wch-elf-gcc not found in the extracted toolchain"
+            exit 1
+          fi
+          root=$(dirname "$(dirname "$gcc")")
+          echo "WCH_TOOLCHAIN_ROOT=$root" >> "$GITHUB_ENV"
+          "$root/bin/riscv32-wch-elf-gcc" --version | head -1
+
+      - name: Configure
+        run: cmake --preset wch
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            build/wch-mouse.hex
+            build/wch-mouse.elf
+            build/dongle/wch-dongle.hex
+            build/dongle/wch-dongle.elf
