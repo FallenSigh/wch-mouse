@@ -42,16 +42,16 @@ export default function Lighting({ settings, apply }: Props) {
 
   const submit = () => {
     const [r, g, b] = fromHex(color);
-    void apply(() =>
-      api.setRgb({
+    void apply(async () => ({
+      rgb: await api.setRgb({
         enable: enable ? 1 : 0,
         effect,
         brightness,
         r,
         g,
         b,
-      })
-    );
+      }),
+    }));
   };
 
   return (

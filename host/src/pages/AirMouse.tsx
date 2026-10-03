@@ -17,7 +17,13 @@ export default function AirMouse({ settings, apply }: Props) {
         <select
           value={settings.air_sens}
           onChange={(e) =>
-            void apply(() => api.setAirSens(Number(e.target.value)))
+            void apply(async () => {
+              const air_sens = await api.setAirSens(Number(e.target.value));
+              return {
+                air_sens,
+                air_sens_pair: [AIR_SENS[air_sens][0], AIR_SENS[air_sens][1]],
+              };
+            })
           }
         >
           {AIR_SENS.map(([x, y], index) => (
@@ -37,7 +43,10 @@ export default function AirMouse({ settings, apply }: Props) {
         <select
           value={settings.air_odr}
           onChange={(e) =>
-            void apply(() => api.setAirOdr(Number(e.target.value)))
+            void apply(async () => {
+              const air_odr = await api.setAirOdr(Number(e.target.value));
+              return { air_odr, air_odr_hz: AIR_ODR_HZ[air_odr] };
+            })
           }
         >
           {AIR_ODR_HZ.map((hz, index) => (

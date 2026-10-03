@@ -52,7 +52,9 @@ export default function Sensor({ settings, apply }: Props) {
           />
           <button
             type="button"
-            onClick={() => void apply(() => api.setDpi(clampDpi(dpi)))}
+            onClick={() =>
+              void apply(async () => ({ dpi: await api.setDpi(clampDpi(dpi)) }))
+            }
           >
             Apply
           </button>
@@ -75,7 +77,12 @@ export default function Sensor({ settings, apply }: Props) {
           </select>
           <button
             type="button"
-            onClick={() => void apply(() => api.setSensor(mode))}
+            onClick={() =>
+              void apply(async () => {
+                const sensor = await api.setSensor(mode);
+                return { sensor, sensor_label: SENSOR_MODES[sensor] };
+              })
+            }
           >
             Apply
           </button>
@@ -97,7 +104,12 @@ export default function Sensor({ settings, apply }: Props) {
           </select>
           <button
             type="button"
-            onClick={() => void apply(() => api.setLift(lift))}
+            onClick={() =>
+              void apply(async () => {
+                const cut = await api.setLift(lift);
+                return { lift: cut, lift_label: LIFT_CUTS[cut] };
+              })
+            }
           >
             Apply
           </button>
@@ -112,7 +124,10 @@ export default function Sensor({ settings, apply }: Props) {
             <select
               value={link.rate(settings)}
               onChange={(e) =>
-                void apply(() => api.setRate(link.code, Number(e.target.value)))
+                void apply(async () => {
+                  const hz = await api.setRate(link.code, Number(e.target.value));
+                  return { rates: { ...settings.rates, [link.name]: hz } };
+                })
               }
             >
               {RATES.map((hz) => (

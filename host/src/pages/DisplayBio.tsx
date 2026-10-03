@@ -23,7 +23,9 @@ export default function DisplayBio({ settings, apply }: Props) {
           <input
             type="checkbox"
             checked={settings.oled}
-            onChange={(e) => void apply(() => api.setOled(e.target.checked))}
+            onChange={(e) =>
+              void apply(async () => ({ oled: await api.setOled(e.target.checked) }))
+            }
           />
           Panel on
         </label>
@@ -67,7 +69,11 @@ export default function DisplayBio({ settings, apply }: Props) {
           <input
             type="checkbox"
             checked={settings.periph_batt}
-            onChange={(e) => void apply(() => api.setPeriph(e.target.checked))}
+            onChange={(e) =>
+              void apply(async () => ({
+                periph_batt: await api.setPeriph(e.target.checked),
+              }))
+            }
           />
           Allow panel / LED rail / BIO to run on battery
         </label>
@@ -80,7 +86,9 @@ export default function DisplayBio({ settings, apply }: Props) {
             type="checkbox"
             checked={settings.motor_enable}
             onChange={(e) =>
-              void apply(() => api.setMotorEn(e.target.checked))
+              void apply(async () => ({
+                motor_enable: await api.setMotorEn(e.target.checked),
+              }))
             }
           />
           Motor enabled
@@ -95,7 +103,12 @@ export default function DisplayBio({ settings, apply }: Props) {
             onChange={(e) => setBuzzMs(Number(e.target.value))}
           />
           <span className="muted">ms (max 30000)</span>
-          <button type="button" onClick={() => void apply(() => api.buzz(safeBuzz))}>
+          <button
+            type="button"
+            onClick={() =>
+              void apply(async () => ({ motor_running: await api.buzz(safeBuzz) }))
+            }
+          >
             Buzz
           </button>
         </div>

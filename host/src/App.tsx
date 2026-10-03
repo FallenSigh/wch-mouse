@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import * as api from "./api";
 import AirMouse from "./pages/AirMouse";
@@ -67,22 +67,20 @@ export default function App() {
   }, []);
 
   const apply = useCallback(
-    async (action: () => Promise<unknown>) => {
+    async (action: () => Promise<Partial<Settings> | void>) => {
       try {
-        await action();
-        await refresh();
+        const patch = await action();
+        if (patch) {
+          setSettings((current) =>
+            current ? { ...current, ...patch } : current
+          );
+        }
       } catch (e) {
         setError(String(e));
       }
     },
-    [refresh]
+    []
   );
-
-  useEffect(() => {
-    if (connected) {
-      void refresh();
-    }
-  }, [connected, refresh]);
 
   return (
     <div className="app">

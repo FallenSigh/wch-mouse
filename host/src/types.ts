@@ -117,10 +117,12 @@ export interface BioPacket {
 }
 
 /**
- * Run a mutating action and refresh the aggregate settings afterwards.
- * Errors are surfaced by the caller (App).
+ * Run a mutating action and merge its returned settings patch into the cached
+ * settings, so a set does not cost a full re-read. Errors surface in App.
  */
-export type Apply = (action: () => Promise<unknown>) => Promise<void>;
+export type Apply = (
+  action: () => Promise<Partial<Settings> | void>
+) => Promise<void>;
 
 /** Link selector codes as the protocol expects them. */
 export const LINK_CODE: Record<LinkName, number> = {
