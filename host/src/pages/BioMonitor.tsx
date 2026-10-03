@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef } from "react";
 
-import * as api from "../api";
-import type { BioPacket, SerialPortInfo } from "../types";
+import { useBio } from "../BioContext";
 
 const RING = 512;
 const WAVE_MIN = -128;
@@ -40,21 +38,9 @@ const METRICS: { key: NumericKey; label: string; unit?: string }[] = [
 ];
 
 export default function BioMonitor() {
-  const [ports, setPorts] = useState<SerialPortInfo[]>([]);
-  const [port, setPort] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [packet, setPacket] = useState<BioPacket | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
+  const { ports, port, setPort, running, packet, error, samples, refreshPorts, start, stop } =
+    useBio();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const samplesRef = useRef<number[]>([]);
-  const unlistenersRef = useRef<UnlistenFn[]>([]);
-  const runningRef = useRef(false);
-
-  const clearListeners = useCallback(() => {
-    for (const un of unlistenersRef.current) un();
-    unlistenersRef.current = [];
-  }, []);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -83,7 +69,7 @@ export default function BioMonitor() {
     ctx.lineTo(w, h / 2);
     ctx.stroke();
 
-    const data = samplesRef.current;
+    const data = samples.current;
     if (data.length < 2) return;
 
     const half = Math.max(1, h / 2 - 6);
@@ -98,74 +84,17 @@ export default function BioMonitor() {
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
-  }, []);
-
-  const onPacket = useCallback(
-    (next: BioPacket) => {
-      setPacket(next);
-      const buf = samplesRef.current;
-      for (const sample of next.acdata) buf.push(sample);
-      if (buf.length > RING) buf.splice(0, buf.length - RING);
-      draw();
-    },
-    [draw]
-  );
-
-  const loadPorts = useCallback(async () => {
-    try {
-      const list = await api.listSerialPorts();
-      setPorts(list);
-      setPort((current) =>
-        current && list.some((p) => p.port_name === current)
-          ? current
-          : (list[0]?.port_name ?? null)
-      );
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
-
-  const handleStop = useCallback(async () => {
-    runningRef.current = false;
-    clearListeners();
-    try {
-      await api.bioStop();
-    } catch (e) {
-      setError(String(e));
-    }
-    setRunning(false);
-  }, [clearListeners]);
-
-  const handleStart = useCallback(async () => {
-    if (!port) return;
-    setError(null);
-    try {
-      await api.bioStart(port);
-      clearListeners();
-      unlistenersRef.current.push(
-        await listen<BioPacket>("bio:packet", (e) => onPacket(e.payload)),
-        await listen<string>("bio:error", (e) => setError(e.payload))
-      );
-      runningRef.current = true;
-      setRunning(true);
-    } catch (e) {
-      setError(String(e));
-    }
-  }, [port, onPacket, clearListeners]);
+  }, [samples]);
 
   useEffect(() => {
-    void loadPorts();
+    draw();
+  }, [draw, packet]);
+
+  useEffect(() => {
     const onResize = () => draw();
     window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      clearListeners();
-      if (runningRef.current) {
-        runningRef.current = false;
-        void api.bioStop().catch(() => undefined);
-      }
-    };
-  }, [loadPorts, draw, clearListeners]);
+    return () => window.removeEventListener("resize", onResize);
+  }, [draw]);
 
   const hasContact = packet?.valid ?? false;
 
@@ -201,14 +130,14 @@ export default function BioMonitor() {
           <button
             type="button"
             disabled={running || !port}
-            onClick={() => void handleStart()}
+            onClick={() => void start()}
           >
             Start
           </button>
-          <button type="button" disabled={!running} onClick={() => void handleStop()}>
+          <button type="button" disabled={!running} onClick={() => void stop()}>
             Stop
           </button>
-          <button type="button" disabled={running} onClick={() => void loadPorts()}>
+          <button type="button" disabled={running} onClick={() => void refreshPorts()}>
             Refresh ports
           </button>
           <span className="muted">
