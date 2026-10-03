@@ -127,7 +127,7 @@ static uint16_t ble_task_handler(uint8_t task_id, uint16_t events) {
 }
 
 /* Advertised name (GAPS name). GAP_DEVICE_NAME_LEN = 21 excludes NUL. */
-static const uint8_t s_devName[GAP_DEVICE_NAME_LEN] = "CH585 Mouse";
+static const uint8_t s_devName[GAP_DEVICE_NAME_LEN] = "FS Mouse";
 
 /* Bonding defaults copied from the vendor HID_Mouse example: Just Works
  * pairing with bonding, no passkey and no MITM. */
@@ -153,15 +153,12 @@ static uint8_t s_advData[] = {
 /* Scan response: complete local name + connection interval range + HID and
  * Battery service UUIDs + TX power. The name here is what a phone shows in
  * its scan list; s_devName above is the GAP service value read after
- * connecting. "CH585 Mouse" is 11 chars, so the AD length byte is 12. */
+ * connecting. "FS Mouse" is 8 chars, so the AD length byte is 9. */
 static uint8_t s_scanRspData[] = {
-    0x0C,
+    0x09,
     GAP_ADTYPE_LOCAL_NAME_COMPLETE,
-    'C',
-    'H',
-    '5',
-    '8',
-    '5',
+    'F',
+    'S',
     ' ',
     'M',
     'o',
