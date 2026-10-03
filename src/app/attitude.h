@@ -19,6 +19,30 @@
  * whenever the sensor is (re)started. */
 
 typedef struct {
+    float    mahony_kp;        /* accelerometer blend, 1/s               */
+    float    accel_min_g2;     /* tilt-correction gate, lower bound, g^2 */
+    float    accel_max_g2;     /* tilt-correction gate, upper bound, g^2 */
+    float    zaru_gyro_dps;    /* still threshold                        */
+    float    zaru_accel_tol_g; /* |a| must be within this of 1 g          */
+    uint16_t zaru_confirm;     /* still samples needed to confirm         */
+    float    zaru_tau_s;       /* online bias adaptation time constant    */
+} attitude_cfg_t;
+
+/* Initializer matching the shipped tuning. */
+#define ATTITUDE_CFG_DEFAULT                                    \
+    {                                                           \
+        .mahony_kp        = 1.0f,                               \
+        .accel_min_g2     = 0.7225f,   /* 0.85^2 */             \
+        .accel_max_g2     = 1.3225f,   /* 1.15^2 */             \
+        .zaru_gyro_dps    = 0.5f,                               \
+        .zaru_accel_tol_g = 0.08f,                              \
+        .zaru_confirm     = 100u,                               \
+        .zaru_tau_s       = 4.0f,                               \
+    }
+
+typedef struct {
+    attitude_cfg_t cfg;
+
     float q0, q1, q2, q3;             /* body -> reference, scalar first */
     float bias_x, bias_y, bias_z;     /* gyro bias, deg/s */
 
@@ -41,6 +65,11 @@ typedef struct {
     float roll_cont, yaw_cont;
 } attitude_t;
 
+/* Copy the configuration and clear all runtime state. */
+void attitude_init(attitude_t *a, const attitude_cfg_t *cfg);
+
+/* Clear the runtime state (angles, filters, calibration) but keep the config.
+ * Call on sensor restart. */
 void attitude_reset(attitude_t *a);
 
 /* Start an entry calibration: discard `warmup` samples, then average `samples`

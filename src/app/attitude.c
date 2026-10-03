@@ -9,22 +9,6 @@
 
 #include <math.h>
 
-/* Mahony proportional gain. The integral term is omitted: with no magnetometer
- * yaw is unobservable, so an integral would only pump false feedback into it. */
-#define ATT_KP                1.0f
-
-/* Accelerometer tilt-correction gate, in g^2 (0.85^2 .. 1.15^2). */
-#define ATT_ACCEL_MIN_G2      0.7225f
-#define ATT_ACCEL_MAX_G2      1.3225f
-
-/* Zero-rate update: a sample counts as still below this gyro magnitude and
- * within this accelerometer tolerance of 1 g; it takes this many still samples
- * to confirm, then adapts the bias with this time constant. */
-#define ATT_ZARU_GYRO_DPS     0.5f
-#define ATT_ZARU_ACCEL_TOL_G  0.08f
-#define ATT_ZARU_CONFIRM      100u
-#define ATT_ZARU_TAU_S        4.0f
-
 #define ATT_RAD2DEG           57.29577951308232f
 #define ATT_DEG2RAD           0.017453292519943295f
 
@@ -85,6 +69,12 @@ static float att_raw_yaw(const attitude_t *a)
 {
     return atan2f(2.0f * (a->q0 * a->q3 + a->q1 * a->q2),
                   1.0f - 2.0f * (a->q2 * a->q2 + a->q3 * a->q3)) * ATT_RAD2DEG;
+}
+
+void attitude_init(attitude_t *a, const attitude_cfg_t *cfg)
+{
+    a->cfg = *cfg;
+    attitude_reset(a);
 }
 
 void attitude_reset(attitude_t *a)
@@ -150,9 +140,11 @@ static void att_zaru(attitude_t *a, float gx, float gy, float gz,
     const float gyro_mag2  = gx * gx + gy * gy + gz * gz;
     const float accel_mag2 = ax * ax + ay * ay + az * az;
 
-    const bool still = (gyro_mag2 <= ATT_ZARU_GYRO_DPS * ATT_ZARU_GYRO_DPS)
-                    && (accel_mag2 >= 0.8464f)
-                    && (accel_mag2 <= 1.1664f);
+    const float zlo = 1.0f - a->cfg.zaru_accel_tol_g;
+    const float zhi = 1.0f + a->cfg.zaru_accel_tol_g;
+    const bool still = (gyro_mag2 <= a->cfg.zaru_gyro_dps * a->cfg.zaru_gyro_dps)
+                    && (accel_mag2 >= zlo * zlo)
+                    && (accel_mag2 <= zhi * zhi);
 
     if (!still) {
         a->zaru_count  = 0u;
@@ -170,10 +162,10 @@ static void att_zaru(attitude_t *a, float gx, float gy, float gz,
         a->zaru_sum_x += gx;
         a->zaru_sum_y += gy;
         a->zaru_sum_z += gz;
-        if (a->zaru_count < ATT_ZARU_CONFIRM) {
+        if (a->zaru_count < a->cfg.zaru_confirm) {
             ++a->zaru_count;
         }
-        if (a->zaru_count < ATT_ZARU_CONFIRM) {
+        if (a->zaru_count < a->cfg.zaru_confirm) {
             *out_x = gx;
             *out_y = gy;
             *out_z = gz;
@@ -186,7 +178,7 @@ static void att_zaru(attitude_t *a, float gx, float gy, float gz,
         a->bias_z += a->zaru_sum_z * inv;
         a->zaru_active = true;
     } else {
-        const float lambda = dt / (ATT_ZARU_TAU_S + dt);
+        const float lambda = dt / (a->cfg.zaru_tau_s + dt);
         a->bias_x += lambda * gx;
         a->bias_y += lambda * gy;
         a->bias_z += lambda * gz;
@@ -209,7 +201,7 @@ static void att_mahony(attitude_t *a, float gx, float gy, float gz,
 
     const float a2 = ax * ax + ay * ay + az * az;
 
-    if (a2 >= ATT_ACCEL_MIN_G2 && a2 <= ATT_ACCEL_MAX_G2) {
+    if (a2 >= a->cfg.accel_min_g2 && a2 <= a->cfg.accel_max_g2) {
         const float inv = 1.0f / sqrtf(a2);
         const float nx = ax * inv;
         const float ny = ay * inv;
@@ -223,9 +215,9 @@ static void att_mahony(attitude_t *a, float gx, float gy, float gz,
         const float half_ey = nz * half_vx - nx * half_vz;
         const float half_ez = nx * half_vy - ny * half_vx;
 
-        wx += 2.0f * ATT_KP * half_ex;
-        wy += 2.0f * ATT_KP * half_ey;
-        wz += 2.0f * ATT_KP * half_ez;
+        wx += 2.0f * a->cfg.mahony_kp * half_ex;
+        wy += 2.0f * a->cfg.mahony_kp * half_ey;
+        wz += 2.0f * a->cfg.mahony_kp * half_ez;
     }
 
     const float half_dt = 0.5f * dt;

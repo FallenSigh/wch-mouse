@@ -241,7 +241,6 @@ void air_mouse_init(const air_mouse_cfg_t *cfg)
     s_combo_armed = false;
     motor_off();
 
-    attitude_reset(&s_att);
     if (s_cfg.odr_idx < AIR_ODR_COUNT) {
         s_odr_idx = s_cfg.odr_idx;
     }
@@ -249,15 +248,17 @@ void air_mouse_init(const air_mouse_cfg_t *cfg)
         s_sens_idx = s_cfg.sens_idx;
     }
 
-    const pointer_cfg_t pcfg = {
-        .counts_x = (float)s_sens_x[s_sens_idx],
-        .counts_y = (float)s_sens_y[s_sens_idx],
-        /* Fixed on the bench: yaw (about the gravity axis) is horizontal, the
-         * pitch tilt is vertical, and both signs match the HID report. */
-        .swap     = 0u,
-        .invert_x = 1u,
-        .invert_y = 1u,
-    };
+    const attitude_cfg_t acfg = ATTITUDE_CFG_DEFAULT;
+    attitude_init(&s_att, &acfg);
+
+    pointer_cfg_t pcfg = POINTER_CFG_DEFAULT;
+    pcfg.counts_x = (float)s_sens_x[s_sens_idx];
+    pcfg.counts_y = (float)s_sens_y[s_sens_idx];
+    /* Fixed on the bench: yaw (about the gravity axis) is horizontal, the
+     * pitch tilt is vertical, and both signs match the HID report. */
+    pcfg.swap     = 0u;
+    pcfg.invert_x = 1u;
+    pcfg.invert_y = 1u;
     pointer_init(&s_ptr, &pcfg);
 
     LOG_I("AIR", "ready (side1+side2 hold %u ms)", (unsigned)AIR_MOUSE_HOLD_MS);

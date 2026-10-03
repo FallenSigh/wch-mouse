@@ -23,12 +23,32 @@
 #define POINTER_BTN_MID    0x04u
 
 typedef struct {
-    float   counts_x;   /* mouse counts per degree of rotation */
-    float   counts_y;
-    uint8_t swap;       /* exchange the X/Y angles            */
-    uint8_t invert_x;   /* reverse each axis                  */
-    uint8_t invert_y;
+    float    counts_x;              /* mouse counts per degree of rotation */
+    float    counts_y;
+    uint8_t  swap;                  /* exchange the X/Y angles             */
+    uint8_t  invert_x;              /* reverse each axis                   */
+    uint8_t  invert_y;
+    uint32_t settle_ms;             /* freeze held after a button release  */
+    float    unlock_deg;            /* rotation while held that resumes    */
+    float    filter_min_cutoff_hz;  /* One Euro: still cutoff              */
+    float    filter_beta;           /* One Euro: speed adaptation          */
+    float    filter_deriv_cutoff_hz;/* One Euro: derivative smoothing      */
 } pointer_cfg_t;
+
+/* Initializer matching the shipped tuning. */
+#define POINTER_CFG_DEFAULT                                     \
+    {                                                           \
+        .counts_x              = 36.0f,                         \
+        .counts_y              = 32.0f,                         \
+        .swap                  = 0u,                            \
+        .invert_x              = 0u,                            \
+        .invert_y              = 0u,                            \
+        .settle_ms             = 35u,                           \
+        .unlock_deg            = 1.0f,                          \
+        .filter_min_cutoff_hz  = 3.0f,                          \
+        .filter_beta           = 0.18f,                         \
+        .filter_deriv_cutoff_hz = 2.0f,                         \
+    }
 
 /* One Euro filter state (one per axis). */
 typedef struct {
@@ -41,6 +61,12 @@ typedef struct {
 typedef struct {
     float counts_x, counts_y;
     uint8_t swap, invert_x, invert_y;
+
+    uint32_t settle_ms;
+    float    unlock_deg;
+    float    filter_min_cutoff_hz;
+    float    filter_beta;
+    float    filter_deriv_cutoff_hz;
 
     bool  neutral_pending;
     float neutral_yaw, neutral_pitch;

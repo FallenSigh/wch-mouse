@@ -9,18 +9,6 @@
 
 #include <math.h>
 
-/* A button press freezes the pointer; after release it stays frozen this long
- * so the finger rebound cannot move the cursor, and holding a button while
- * rotating past the unlock angle resumes motion (drag / FPS aim). */
-#define POINTER_SETTLE_MS      35u
-#define POINTER_UNLOCK_DEG     1.0f
-
-/* One Euro filter: a low-pass whose cutoff rises with the estimated angular
- * speed, so it smooths hard while still and barely lags while moving. */
-#define POINTER_FILTER_MIN_CUTOFF_HZ   3.0f
-#define POINTER_FILTER_BETA            0.18f
-#define POINTER_FILTER_DERIV_CUTOFF_HZ 2.0f
-
 #define POINTER_TWO_PI  6.283185307179586f
 
 static float pointer_euro_alpha(float cutoff_hz, float dt)
@@ -37,7 +25,7 @@ static void pointer_euro_reset(pointer_euro_t *f, float value)
     f->deriv       = 0.0f;
 }
 
-static float pointer_euro(pointer_euro_t *f, float value, float dt)
+static float pointer_euro(pointer_t *p, pointer_euro_t *f, float value, float dt)
 {
     if (!f->initialized) {
         pointer_euro_reset(f, value);
@@ -47,10 +35,10 @@ static float pointer_euro(pointer_euro_t *f, float value, float dt)
     const float raw_deriv = (value - f->last_raw) / dt;
     f->last_raw = value;
 
-    const float deriv_alpha = pointer_euro_alpha(POINTER_FILTER_DERIV_CUTOFF_HZ, dt);
+    const float deriv_alpha = pointer_euro_alpha(p->filter_deriv_cutoff_hz, dt);
     f->deriv += deriv_alpha * (raw_deriv - f->deriv);
 
-    const float cutoff = POINTER_FILTER_MIN_CUTOFF_HZ + POINTER_FILTER_BETA * fabsf(f->deriv);
+    const float cutoff = p->filter_min_cutoff_hz + p->filter_beta * fabsf(f->deriv);
     const float value_alpha = pointer_euro_alpha(cutoff, dt);
     f->filtered += value_alpha * (value - f->filtered);
     return f->filtered;
@@ -73,6 +61,12 @@ void pointer_init(pointer_t *p, const pointer_cfg_t *cfg)
     p->swap     = cfg->swap;
     p->invert_x = cfg->invert_x;
     p->invert_y = cfg->invert_y;
+
+    p->settle_ms              = cfg->settle_ms;
+    p->unlock_deg             = cfg->unlock_deg;
+    p->filter_min_cutoff_hz   = cfg->filter_min_cutoff_hz;
+    p->filter_beta            = cfg->filter_beta;
+    p->filter_deriv_cutoff_hz = cfg->filter_deriv_cutoff_hz;
 
     pointer_reset(p);
 }
@@ -131,7 +125,7 @@ void pointer_update(pointer_t *p,
         pointer_freeze(p, yaw_deg, pitch_deg);
     } else if ((mouse == 0u) && ((p->raw_prev & mouse_mask) != 0u)) {
         p->settling  = true;
-        p->settle_at = now_ms + POINTER_SETTLE_MS;
+        p->settle_at = now_ms + p->settle_ms;
     }
     p->raw_prev = mouse;
 
@@ -157,7 +151,7 @@ void pointer_update(pointer_t *p,
         const float dpitch = pitch_deg - p->start_pitch;
 
         if (held && ((dyaw * dyaw + dpitch * dpitch) >=
-                     (POINTER_UNLOCK_DEG * POINTER_UNLOCK_DEG))) {
+                     (p->unlock_deg * p->unlock_deg))) {
             p->frozen          = false;
             p->settling        = false;
             p->neutral_pending = true;
@@ -195,8 +189,8 @@ void pointer_update(pointer_t *p,
         y = -y;
     }
 
-    const float fx = pointer_euro(&p->fx, x, dt);
-    const float fy = pointer_euro(&p->fy, y, dt);
+    const float fx = pointer_euro(p, &p->fx, x, dt);
+    const float fy = pointer_euro(p, &p->fy, y, dt);
 
     if (!p->angle_ready) {
         p->last_fx     = fx;
