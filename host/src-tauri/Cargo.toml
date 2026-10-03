@@ -1,0 +1,31 @@
+[package]
+name = "wch-mouse-host"
+version = "0.1.0"
+description = "PC-side configuration and status client for the wch-mouse firmware"
+authors = ["wch-mouse"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "wch_mouse_host_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Default features give the static hidraw backend on Linux; the bundled C
+# library also carries the Windows (hid.dll) and macOS (IOKit) backends.
+hidapi = "2"
+# CDC serial stream from the BIO module (wired mouse only). Default features
+# enable libudev on Linux so `available_ports()` can read the USB vid/pid.
+serialport = "4"
+
+[features]
+# Tauri runs the app in production mode by default; `tauri dev` builds with
+# --no-default-features so the dev server URL is used instead.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
