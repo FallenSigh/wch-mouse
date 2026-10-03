@@ -33,9 +33,20 @@ typedef struct {
     uint16_t              cpi;    /* optical settings restored on exit   */
     enum paw3395_mode     mode;
     enum paw3395_lift_cut lift;
+    uint8_t               sens_idx; /* pointer sensitivity preset       */
+    uint8_t               odr_idx;  /* IMU output-data-rate preset      */
 } air_mouse_cfg_t;
 
 void air_mouse_init(const air_mouse_cfg_t *cfg);
+
+/* Preset counts, for validating a stored index. */
+uint8_t air_mouse_sens_count(void);
+uint8_t air_mouse_odr_count(void);
+
+/* Runtime tuning, persisted by the caller (settings.c). The ODR takes effect
+ * immediately when the mode is already active. */
+void air_mouse_set_sensitivity(uint8_t idx);
+void air_mouse_set_odr(uint8_t idx);
 
 /* Call once per scan. `buttons` is the debounced bitmap (side-1 + side-2 hold
  * switches the mode at the 2 s mark); `raw_buttons` is the undebounced bitmap,

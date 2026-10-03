@@ -11,6 +11,7 @@
 #include "settings.h"
 
 #include "CH58x_common.h"
+#include "air_mouse.h"
 #include "bat.h"
 #include "bio.h"
 #include "log.h"
@@ -54,6 +55,11 @@ static const uint16_t s_rate_hz[] = { 1000u, 125u, 250u, 500u, 2000u, 4000u, 800
  * biggest standing loads and the cable is what normally justifies them. */
 #define SETTINGS_DEF_PERIPH_BATT  0u
 
+/* Air-mouse presets: index 3 is the 36/32 counts-per-degree sensitivity and the
+ * 200 Hz IMU rate (see the tables in air_mouse.c). */
+#define SETTINGS_DEF_AIR_SENS_IDX  3u
+#define SETTINGS_DEF_AIR_ODR_IDX   3u
+
 /* Fixed on-flash layout. The per-link report rates reuse the two reserved bytes
  * and periph_batt is appended, so a record written before either existed still
  * lines up field for field: those bytes read back as 0xFF from the erase and the
@@ -75,6 +81,9 @@ typedef struct __attribute__((packed)) {
     uint8_t  report_rate_idx;
     uint8_t  report_rate_ble_idx;
     uint8_t  periph_batt;
+    uint8_t  air_sens_idx;
+    uint8_t  air_odr_idx;
+    uint8_t  reserved2;    /* pads the record back to a 4-byte multiple */
 } settings_record_t;
 
 static struct paw3395_dev *s_paw;
@@ -95,6 +104,8 @@ static settings_t s_cur = {
     .report_rate_rf_idx  = SETTINGS_DEF_RATE_RF_IDX,
     .report_rate_ble_idx = SETTINGS_DEF_RATE_BLE_IDX,
     .periph_batt         = SETTINGS_DEF_PERIPH_BATT,
+    .air_sens_idx        = SETTINGS_DEF_AIR_SENS_IDX,
+    .air_odr_idx         = SETTINGS_DEF_AIR_ODR_IDX,
 };
 
 static bool     s_dirty;
@@ -128,6 +139,9 @@ static void settings_save(void)
     rec.report_rate_idx = s_cur.report_rate_idx;
     rec.report_rate_ble_idx = s_cur.report_rate_ble_idx;
     rec.periph_batt    = s_cur.periph_batt;
+    rec.air_sens_idx   = s_cur.air_sens_idx;
+    rec.air_odr_idx    = s_cur.air_odr_idx;
+    rec.reserved2      = 0u;
 
     er = EEPROM_ERASE(SETTINGS_FLASH_OFF, EEPROM_BLOCK_SIZE);
     wr = EEPROM_WRITE(SETTINGS_FLASH_OFF, (uint8_t *)&rec, sizeof(rec));
@@ -169,6 +183,8 @@ void settings_init(struct paw3395_dev *paw)
     s_cur.report_rate_rf_idx  = (rec.report_rate_rf_idx < RATE_COUNT) ? rec.report_rate_rf_idx : SETTINGS_DEF_RATE_RF_IDX;
     s_cur.report_rate_ble_idx = (rec.report_rate_ble_idx < RATE_COUNT) ? rec.report_rate_ble_idx : SETTINGS_DEF_RATE_BLE_IDX;
     s_cur.periph_batt    = (rec.periph_batt <= 1u) ? rec.periph_batt : SETTINGS_DEF_PERIPH_BATT;
+    s_cur.air_sens_idx   = (rec.air_sens_idx < air_mouse_sens_count()) ? rec.air_sens_idx : SETTINGS_DEF_AIR_SENS_IDX;
+    s_cur.air_odr_idx    = (rec.air_odr_idx < air_mouse_odr_count()) ? rec.air_odr_idx : SETTINGS_DEF_AIR_ODR_IDX;
 
     LOG_I("SET", "loaded cpi=%u mode=%u lift=%u bio=%u rgb=%u/%u/%u oled=%u rate=%u", (unsigned)s_cur.cpi,
           (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut, (unsigned)s_cur.bio_acquire,
@@ -314,6 +330,38 @@ void settings_set_periph_batt(uint8_t on)
 {
     s_cur.periph_batt = (on != 0u) ? 1u : 0u;
     settings_apply_peripherals();
+    settings_dirty();
+}
+
+uint8_t settings_air_sens_idx(void)
+{
+    return s_cur.air_sens_idx;
+}
+
+void settings_set_air_sens(uint8_t idx)
+{
+    if (idx >= air_mouse_sens_count()) {
+        return;
+    }
+
+    s_cur.air_sens_idx = idx;
+    air_mouse_set_sensitivity(idx);
+    settings_dirty();
+}
+
+uint8_t settings_air_odr_idx(void)
+{
+    return s_cur.air_odr_idx;
+}
+
+void settings_set_air_odr(uint8_t idx)
+{
+    if (idx >= air_mouse_odr_count()) {
+        return;
+    }
+
+    s_cur.air_odr_idx = idx;
+    air_mouse_set_odr(idx);
     settings_dirty();
 }
 

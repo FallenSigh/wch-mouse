@@ -45,6 +45,10 @@ CMD_GET_SENSOR = 0x12
 CMD_SET_SENSOR = 0x13
 CMD_GET_LIFT = 0x14
 CMD_SET_LIFT = 0x15
+CMD_GET_AIR_SENS = 0x16
+CMD_SET_AIR_SENS = 0x17
+CMD_GET_AIR_ODR = 0x18
+CMD_SET_AIR_ODR = 0x19
 CMD_GET_BATTERY = 0x24
 CMD_GET_RGB = 0x30
 CMD_SET_RGB = 0x31
@@ -70,6 +74,9 @@ STATUS = {
 SENSOR_MODES = ("high-performance", "low-power", "office", "corded-gaming")
 LIFT_CUTS = ("1mm", "2mm")
 RATES = (125, 250, 500, 1000, 2000, 4000, 8000)
+# Air-mouse presets, mirroring the tables in src/app/air_mouse.c.
+AIR_SENS = ((9, 8), (18, 16), (27, 24), (36, 32), (54, 48), (72, 64), (108, 96))
+AIR_ODR_HZ = (25, 50, 100, 200, 400, 800, 1600, 3200)
 # The rate command's first payload byte selects the link (src/app/proto.c).
 LINKS = {"usb": 0, "rf": 1, "ble": 2}
 PID_DONGLE = 0xFE0D
@@ -223,6 +230,12 @@ def main() -> int:
     p.add_argument("value", nargs="?", type=int, choices=range(4))
     p = sub.add_parser("lift", help="get lift cut, or set 0=1mm / 1=2mm")
     p.add_argument("value", nargs="?", type=int, choices=(0, 1))
+    p = sub.add_parser("air-sens", help="air-mouse sensitivity: get, or set a preset index")
+    p.add_argument("value", nargs="?", type=int,
+                   help="counts/deg preset index (table in src/app/air_mouse.c)")
+    p = sub.add_parser("air-odr", help="air-mouse IMU output rate: get, or set a preset index")
+    p.add_argument("value", nargs="?", type=int,
+                   help="ODR preset index (table in src/app/air_mouse.c)")
     p = sub.add_parser("rgb", help="get the underglow, or set fields (read-modify-write)")
     p.add_argument("--enable", type=int, choices=(0, 1))
     p.add_argument("--effect", type=int, choices=(0, 1), help="0 = hue cycle, 1 = solid")
@@ -308,6 +321,23 @@ def main() -> int:
                 st, d = transact(dev, CMD_SET_LIFT, bytes([value]), seq=opts.seq)
             ok(st)
             print(f"lift {d[0]} ({LIFT_CUTS[d[0]]})")
+        elif cmd == "air-sens":
+            value = opts.value
+            if value is None:
+                st, d = transact(dev, CMD_GET_AIR_SENS, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_AIR_SENS, bytes([value]), seq=opts.seq)
+            ok(st)
+            x, y = AIR_SENS[d[0]]
+            print(f"air sensitivity idx {d[0]}  {x}/{y} counts/deg")
+        elif cmd == "air-odr":
+            value = opts.value
+            if value is None:
+                st, d = transact(dev, CMD_GET_AIR_ODR, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_AIR_ODR, bytes([value]), seq=opts.seq)
+            ok(st)
+            print(f"air IMU ODR idx {d[0]}  {AIR_ODR_HZ[d[0]]} Hz")
         elif cmd == "rgb":
             st, cur = transact(dev, CMD_GET_RGB, seq=opts.seq)
             ok(st)

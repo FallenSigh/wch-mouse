@@ -238,6 +238,8 @@ int main() {
         .cpi  = 800,
         .mode = PAW3395_MODE_HIGH_PERFORMANCE,
         .lift = PAW3395_LIFT_CUT_2MM,
+        .sens_idx = settings_air_sens_idx(),
+        .odr_idx  = settings_air_odr_idx(),
     };
     air_mouse_init(&air_cfg);
 

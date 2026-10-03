@@ -41,15 +41,36 @@
  * power mode is set before the output settles. */
 #define AIR_MOUSE_CALIB_WARMUP   8u
 
-/* Sensitivity: relative mouse counts emitted per degree of pointer rotation.
- * Kept in a float accumulator so slow motion is not rounded away. Tune to
- * taste. */
-#ifndef AIR_MOUSE_COUNTS_PER_DEG_X
-#define AIR_MOUSE_COUNTS_PER_DEG_X  36.0f
-#endif
-#ifndef AIR_MOUSE_COUNTS_PER_DEG_Y
-#define AIR_MOUSE_COUNTS_PER_DEG_Y  32.0f
-#endif
+/* Pointer sensitivity presets: relative mouse counts per degree of rotation.
+ * The stored index selects an (X, Y) pair; index 3 is the 36/32 default. */
+static const uint8_t s_sens_x[] = { 9u, 18u, 27u, 36u, 54u, 72u, 108u };
+static const uint8_t s_sens_y[] = { 8u, 16u, 24u, 32u, 48u, 64u,  96u };
+#define AIR_SENS_COUNT ((uint8_t)(sizeof(s_sens_x) / sizeof(s_sens_x[0])))
+
+/* IMU output-data-rate presets. The gyro reaches 3.2 kHz; the accelerometer
+ * tops out at 1.6 kHz, so the last row pairs 3.2 kHz gyro with it. */
+typedef struct {
+    uint8_t gyr;
+    uint8_t acc;
+} air_odr_t;
+
+static const air_odr_t s_odr[] = {
+    { BMI2_GYR_ODR_25HZ,   BMI2_ACC_ODR_25HZ   },
+    { BMI2_GYR_ODR_50HZ,   BMI2_ACC_ODR_50HZ   },
+    { BMI2_GYR_ODR_100HZ,  BMI2_ACC_ODR_100HZ  },
+    { BMI2_GYR_ODR_200HZ,  BMI2_ACC_ODR_200HZ  },
+    { BMI2_GYR_ODR_400HZ,  BMI2_ACC_ODR_400HZ  },
+    { BMI2_GYR_ODR_800HZ,  BMI2_ACC_ODR_800HZ  },
+    { BMI2_GYR_ODR_1600HZ, BMI2_ACC_ODR_1600HZ },
+    { BMI2_GYR_ODR_3200HZ, BMI2_ACC_ODR_1600HZ },
+};
+#define AIR_ODR_COUNT ((uint8_t)(sizeof(s_odr) / sizeof(s_odr[0])))
+
+/* Active presets; the caller seeds these through air_mouse_cfg_t. */
+static uint8_t s_sens_idx = 3u;
+static uint8_t s_odr_idx  = 3u;
+static float   s_counts_x = 36.0f;
+static float   s_counts_y = 32.0f;
 
 static air_mouse_cfg_t s_cfg;
 
@@ -464,7 +485,7 @@ static void air_mouse_imu_on(void)
     const uint8_t           sensors[2] = { BMI2_GYRO, BMI2_ACCEL };
 
     cfg[0].type                = BMI2_GYRO;
-    cfg[0].cfg.gyr.odr         = BMI2_GYR_ODR_200HZ;
+    cfg[0].cfg.gyr.odr         = s_odr[s_odr_idx].gyr;
     cfg[0].cfg.gyr.bwp         = BMI2_GYR_NORMAL_MODE;
     cfg[0].cfg.gyr.filter_perf = BMI2_PERF_OPT_MODE;
     cfg[0].cfg.gyr.noise_perf  = BMI2_POWER_OPT_MODE;
@@ -472,7 +493,7 @@ static void air_mouse_imu_on(void)
     cfg[0].cfg.gyr.ois_range   = BMI2_GYR_OIS_2000;
 
     cfg[1].type                = BMI2_ACCEL;
-    cfg[1].cfg.acc.odr         = BMI2_ACC_ODR_200HZ;
+    cfg[1].cfg.acc.odr         = s_odr[s_odr_idx].acc;
     cfg[1].cfg.acc.bwp         = BMI2_ACC_NORMAL_AVG4;
     cfg[1].cfg.acc.filter_perf = BMI2_PERF_OPT_MODE;
     cfg[1].cfg.acc.range       = BMI2_ACC_RANGE_4G;
@@ -483,6 +504,49 @@ static void air_mouse_imu_on(void)
 
     if (bmi270_sensor_enable(sensors, 2, s_cfg.bmi) != BMI2_OK) {
         LOG_W("AIR", "gyro/accel enable failed");
+    }
+}
+
+uint8_t air_mouse_sens_count(void)
+{
+    return AIR_SENS_COUNT;
+}
+
+uint8_t air_mouse_odr_count(void)
+{
+    return AIR_ODR_COUNT;
+}
+
+void air_mouse_set_sensitivity(uint8_t idx)
+{
+    if (idx >= AIR_SENS_COUNT) {
+        return;
+    }
+
+    s_sens_idx = idx;
+    s_counts_x = (float)s_sens_x[idx];
+    s_counts_y = (float)s_sens_y[idx];
+}
+
+void air_mouse_set_odr(uint8_t idx)
+{
+    if (idx >= AIR_ODR_COUNT) {
+        return;
+    }
+
+    s_odr_idx = idx;
+
+    if (s_active) {
+        const uint8_t sensors[2] = { BMI2_GYRO, BMI2_ACCEL };
+
+        /* Re-enable at the new rate. The bias and the attitude are kept; the
+         * sensor-time baseline and the ZARU confirmation restart because the
+         * sample cadence changed. */
+        (void)bmi270_sensor_disable(sensors, 2, s_cfg.bmi);
+        air_mouse_imu_on();
+        s_have_st     = false;
+        s_zaru_count  = 0u;
+        s_zaru_active = false;
     }
 }
 
@@ -558,6 +622,11 @@ void air_mouse_init(const air_mouse_cfg_t *cfg)
     s_combo_armed  = false;
     s_calib_left   = 0;
     motor_off();
+
+    air_mouse_set_sensitivity(s_cfg.sens_idx);
+    if (s_cfg.odr_idx < AIR_ODR_COUNT) {
+        s_odr_idx = s_cfg.odr_idx;
+    }
 
     LOG_I("AIR", "ready (side1+side2 hold %u ms)", (unsigned)AIR_MOUSE_HOLD_MS);
 }
@@ -748,8 +817,8 @@ void air_mouse_read_motion(int16_t *dx, int16_t *dy)
         return;
     }
 
-    s_pend_x += (fx - s_last_fx) * AIR_MOUSE_COUNTS_PER_DEG_X;
-    s_pend_y += (fy - s_last_fy) * AIR_MOUSE_COUNTS_PER_DEG_Y;
+    s_pend_x += (fx - s_last_fx) * s_counts_x;
+    s_pend_y += (fy - s_last_fy) * s_counts_y;
     s_last_fx = fx;
     s_last_fy = fy;
 

@@ -27,6 +27,8 @@ typedef struct __attribute__((packed)) {
     uint8_t  report_rate_rf_idx;
     uint8_t  report_rate_ble_idx;
     uint8_t  periph_batt;   /* 0/1: panel/rail/BIO may run on battery */
+    uint8_t  air_sens_idx;  /* air-mouse pointer sensitivity preset */
+    uint8_t  air_odr_idx;   /* air-mouse IMU output-data-rate preset */
 } settings_t;
 
 void settings_init(struct paw3395_dev *paw);
@@ -68,6 +70,14 @@ void     settings_set_report_hz_rf(uint16_t hz);
 
 uint16_t settings_report_hz_ble(void);
 void     settings_set_report_hz_ble(uint16_t hz);
+
+/* Air-mouse pointer sensitivity and IMU output-data-rate presets. Each is an
+ * index into the tables owned by air_mouse.c. */
+uint8_t settings_air_sens_idx(void);
+void    settings_set_air_sens(uint8_t idx);
+
+uint8_t settings_air_odr_idx(void);
+void    settings_set_air_odr(uint8_t idx);
 
 /* Flush a dirty record to DataFlash. Call from the main loop. */
 void settings_poll(uint32_t now_ms);

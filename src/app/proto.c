@@ -10,6 +10,7 @@
 
 #include <string.h>
 
+#include "air_mouse.h"
 #include "bat.h"
 #include "bio.h"
 #include "motor.h"
@@ -29,6 +30,10 @@
 #define PROTO_CMD_SET_SENSOR    0x13u
 #define PROTO_CMD_GET_LIFT      0x14u
 #define PROTO_CMD_SET_LIFT      0x15u
+#define PROTO_CMD_GET_AIR_SENS  0x16u
+#define PROTO_CMD_SET_AIR_SENS  0x17u
+#define PROTO_CMD_GET_AIR_ODR   0x18u
+#define PROTO_CMD_SET_AIR_ODR   0x19u
 #define PROTO_CMD_GET_RGB       0x30u
 #define PROTO_CMD_SET_RGB       0x31u
 #define PROTO_CMD_GET_OLED    0x40u
@@ -216,6 +221,54 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             settings_set_lift(frame[3]);
 
             const uint8_t data[1] = { settings_get()->lift_cut };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_GET_AIR_SENS: {
+            const uint8_t data[1] = { settings_air_sens_idx() };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_AIR_SENS: {
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            if (frame[3] >= air_mouse_sens_count()) {
+                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
+                break;
+            }
+
+            settings_set_air_sens(frame[3]);
+
+            const uint8_t data[1] = { settings_air_sens_idx() };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_GET_AIR_ODR: {
+            const uint8_t data[1] = { settings_air_odr_idx() };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_AIR_ODR: {
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            if (frame[3] >= air_mouse_odr_count()) {
+                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
+                break;
+            }
+
+            settings_set_air_odr(frame[3]);
+
+            const uint8_t data[1] = { settings_air_odr_idx() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
