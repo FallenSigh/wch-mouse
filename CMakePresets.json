@@ -13,7 +13,7 @@
         "WCH_DCDC_ENABLE": "ON",
         "WCH_BLE_ENABLE": "ON",
         "WCH_RF_ENABLE": "ON",
-        "WCH_LOG_LEVEL": "LOG_LVL_DEBUG"
+        "WCH_LOG_LEVEL": "LOG_LVL_ERROR"
       }
     }
   ],
