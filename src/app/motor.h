@@ -29,6 +29,12 @@ extern "C" {
 /* Configure PB0 as the switch output, motor off. */
 void motor_init(void);
 
+/* Global gate: a disabled motor is forced off and every motor_on() / motor_pulse()
+ * is ignored, so a user who does not want the feedback can silence the mode
+ * switch buzz as well. Enabled by default. */
+void motor_set_enable(bool on);
+bool motor_enabled(void);
+
 /* MOSFET on: full drive. */
 void motor_on(void);
 

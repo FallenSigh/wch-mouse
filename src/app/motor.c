@@ -29,9 +29,26 @@ void motor_init(void)
 static uint32_t s_left_ms;   /* 0 while idle */
 static uint32_t s_last_ms;   /* poll time of the last decrement */
 static bool     s_running;
+static bool     s_enabled = true;
+
+void motor_set_enable(bool on)
+{
+    s_enabled = on;
+    if (!on) {
+        motor_off();
+    }
+}
+
+bool motor_enabled(void)
+{
+    return s_enabled;
+}
 
 void motor_on(void)
 {
+    if (!s_enabled) {
+        return;
+    }
     GPIOB_SetBits(GPIO_Pin_0);
 }
 
@@ -44,7 +61,7 @@ void motor_off(void)
 
 void motor_pulse(uint32_t ms)
 {
-    if (ms == 0u) {
+    if (!s_enabled || ms == 0u) {
         motor_off();
         return;
     }

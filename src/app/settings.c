@@ -15,6 +15,7 @@
 #include "bat.h"
 #include "bio.h"
 #include "log.h"
+#include "motor.h"
 #include "oled.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
@@ -60,6 +61,9 @@ static const uint16_t s_rate_hz[] = { 1000u, 125u, 250u, 500u, 2000u, 4000u, 800
 #define SETTINGS_DEF_AIR_SENS_IDX  3u
 #define SETTINGS_DEF_AIR_ODR_IDX   3u
 
+/* Vibration feedback is on by default. */
+#define SETTINGS_DEF_MOTOR_ENABLE  1u
+
 /* Fixed on-flash layout. The per-link report rates reuse the two reserved bytes
  * and periph_batt is appended, so a record written before either existed still
  * lines up field for field: those bytes read back as 0xFF from the erase and the
@@ -83,7 +87,9 @@ typedef struct __attribute__((packed)) {
     uint8_t  periph_batt;
     uint8_t  air_sens_idx;
     uint8_t  air_odr_idx;
-    uint8_t  reserved2;    /* pads the record back to a 4-byte multiple */
+    uint8_t  reserved2;    /* unused padding */
+    uint8_t  motor_enable;
+    uint8_t  reserved[3];  /* keeps the record a 4-byte multiple */
 } settings_record_t;
 
 static struct paw3395_dev *s_paw;
@@ -106,6 +112,7 @@ static settings_t s_cur = {
     .periph_batt         = SETTINGS_DEF_PERIPH_BATT,
     .air_sens_idx        = SETTINGS_DEF_AIR_SENS_IDX,
     .air_odr_idx         = SETTINGS_DEF_AIR_ODR_IDX,
+    .motor_enable        = SETTINGS_DEF_MOTOR_ENABLE,
 };
 
 static bool     s_dirty;
@@ -142,6 +149,10 @@ static void settings_save(void)
     rec.air_sens_idx   = s_cur.air_sens_idx;
     rec.air_odr_idx    = s_cur.air_odr_idx;
     rec.reserved2      = 0u;
+    rec.motor_enable   = s_cur.motor_enable;
+    rec.reserved[0]    = 0u;
+    rec.reserved[1]    = 0u;
+    rec.reserved[2]    = 0u;
 
     er = EEPROM_ERASE(SETTINGS_FLASH_OFF, EEPROM_BLOCK_SIZE);
     wr = EEPROM_WRITE(SETTINGS_FLASH_OFF, (uint8_t *)&rec, sizeof(rec));
@@ -185,6 +196,7 @@ void settings_init(struct paw3395_dev *paw)
     s_cur.periph_batt    = (rec.periph_batt <= 1u) ? rec.periph_batt : SETTINGS_DEF_PERIPH_BATT;
     s_cur.air_sens_idx   = (rec.air_sens_idx < air_mouse_sens_count()) ? rec.air_sens_idx : SETTINGS_DEF_AIR_SENS_IDX;
     s_cur.air_odr_idx    = (rec.air_odr_idx < air_mouse_odr_count()) ? rec.air_odr_idx : SETTINGS_DEF_AIR_ODR_IDX;
+    s_cur.motor_enable   = (rec.motor_enable <= 1u) ? rec.motor_enable : SETTINGS_DEF_MOTOR_ENABLE;
 
     LOG_I("SET", "loaded cpi=%u mode=%u lift=%u bio=%u rgb=%u/%u/%u oled=%u rate=%u", (unsigned)s_cur.cpi,
           (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut, (unsigned)s_cur.bio_acquire,
@@ -230,6 +242,7 @@ void settings_apply(void)
     paw3395_set_cpi(s_paw, s_cur.cpi);
     paw3395_set_mode(s_paw, (enum paw3395_mode)s_cur.sensor_mode);
     paw3395_set_lift_cut(s_paw, (enum paw3395_lift_cut)s_cur.lift_cut);
+    motor_set_enable(s_cur.motor_enable != 0u);
 }
 
 void settings_apply_peripherals(void)
@@ -362,6 +375,18 @@ void settings_set_air_odr(uint8_t idx)
 
     s_cur.air_odr_idx = idx;
     air_mouse_set_odr(idx);
+    settings_dirty();
+}
+
+uint8_t settings_motor_enable(void)
+{
+    return s_cur.motor_enable;
+}
+
+void settings_set_motor_enable(uint8_t on)
+{
+    s_cur.motor_enable = (on != 0u) ? 1u : 0u;
+    motor_set_enable(s_cur.motor_enable != 0u);
     settings_dirty();
 }
 

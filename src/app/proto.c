@@ -45,6 +45,8 @@
 #define PROTO_CMD_SET_PERIPH  0x61u
 #define PROTO_CMD_GET_MOTOR   0x62u
 #define PROTO_CMD_SET_MOTOR   0x63u
+#define PROTO_CMD_GET_MOTOR_EN 0x64u
+#define PROTO_CMD_SET_MOTOR_EN 0x65u
 
 /* Longest single buzz the host can ask for. A stuck-on ERM is 85 mA and gets
  * hot, so the request is capped rather than trusted. */
@@ -365,6 +367,25 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
             motor_pulse(ms);
 
             const uint8_t data[1] = { motor_active() ? 1u : 0u };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_GET_MOTOR_EN: {
+            const uint8_t data[1] = { settings_motor_enable() };
+            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+            break;
+        }
+
+        case PROTO_CMD_SET_MOTOR_EN: {
+            if (plen < 1u) {
+                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+                break;
+            }
+
+            settings_set_motor_enable(frame[3]);
+
+            const uint8_t data[1] = { settings_motor_enable() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }

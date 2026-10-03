@@ -62,6 +62,8 @@ CMD_GET_PERIPH = 0x60
 CMD_SET_PERIPH = 0x61
 CMD_GET_MOTOR = 0x62
 CMD_SET_MOTOR = 0x63
+CMD_GET_MOTOR_EN = 0x64
+CMD_SET_MOTOR_EN = 0x65
 
 STATUS = {
     0x00: "OK",
@@ -255,6 +257,8 @@ def main() -> int:
     p.add_argument("value", nargs="?", type=int, choices=(0, 1))
     p = sub.add_parser("motor", help="vibration motor: get, or buzz for N ms (0 = off)")
     p.add_argument("value", nargs="?", type=int)
+    p = sub.add_parser("motor-en", help="vibration motor on/off: get, or set 0/1")
+    p.add_argument("value", nargs="?", type=int, choices=(0, 1))
     p = sub.add_parser("raw", help="send an arbitrary command with a hex payload")
     p.add_argument("cmd", type=lambda s: int(s, 0))
     p.add_argument("payload", nargs="*", help="payload bytes, e.g. 40 06")
@@ -385,6 +389,13 @@ def main() -> int:
                                  (opts.value & 0xFFFF).to_bytes(2, "little"), seq=opts.seq)
             ok(st)
             print("motor", "running" if d[0] else "off")
+        elif cmd == "motor-en":
+            if opts.value is None:
+                st, d = transact(dev, CMD_GET_MOTOR_EN, seq=opts.seq)
+            else:
+                st, d = transact(dev, CMD_SET_MOTOR_EN, bytes([opts.value]), seq=opts.seq)
+            ok(st)
+            print("motor", "enabled" if d[0] else "disabled")
         elif cmd == "rate":
             link = bytes([LINKS[opts.link]])
             if opts.value is None:

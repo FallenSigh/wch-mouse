@@ -29,6 +29,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  periph_batt;   /* 0/1: panel/rail/BIO may run on battery */
     uint8_t  air_sens_idx;  /* air-mouse pointer sensitivity preset */
     uint8_t  air_odr_idx;   /* air-mouse IMU output-data-rate preset */
+    uint8_t  motor_enable;  /* 0/1: vibration motor allowed            */
 } settings_t;
 
 void settings_init(struct paw3395_dev *paw);
@@ -78,6 +79,10 @@ void    settings_set_air_sens(uint8_t idx);
 
 uint8_t settings_air_odr_idx(void);
 void    settings_set_air_odr(uint8_t idx);
+
+/* Vibration motor gate, persisted like the other peripheral switches. */
+uint8_t settings_motor_enable(void);
+void    settings_set_motor_enable(uint8_t on);
 
 /* Flush a dirty record to DataFlash. Call from the main loop. */
 void settings_poll(uint32_t now_ms);
