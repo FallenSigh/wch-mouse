@@ -15,9 +15,9 @@
 #include "radio_mode.h"
 
 #include "CH58x_common.h"
-#include "ISP585.h"
 #include "log.h"
 #include "motor.h"
+#include "nvm.h"
 
 #if defined(WCH_BLE_ENABLE) && defined(WCH_RF_ENABLE)
 #define RADIO_MODE_SELECTABLE 1
@@ -27,17 +27,10 @@
 
 #if RADIO_MODE_SELECTABLE
 
-/* The EEPROM_* ROM commands address the DataFlash by OFFSET, not by the
- * absolute 0x00070000 the memory map shows - EVT/EXAM/FLASH writes at offset
- * 0, and the vendor's own BLE_SNV_ADDR is 0x77000 - FLASH_ROM_MAX_SIZE =
- * 0x7000. Passing the absolute address gets the whole command rejected. Our
- * record sits in the first 4 KiB block; the vendor keeps its BLE SNV in the
- * last one, so nothing collides.
- *
- * One erased block holds [magic, mode]; the magic tells a programmed block
- * apart from the 0xFF an erase leaves behind. */
-#define RADIO_MODE_FLASH_OFF    0x0000u
-#define RADIO_MODE_MAGIC        0x5Au
+/* The mode flag sits in the first 4 KiB DataFlash block; nvm owns the offset
+ * addressing, the magic and the block erase. The vendor keeps its BLE SNV in
+ * the last block, so nothing collides. */
+static const nvm_slot_t s_slot = { 0x0000u, 0x5Au, 1u };
 
 /* The switch is deferred to the release, so the reset never races the buttons
  * still being down. */
@@ -48,37 +41,24 @@ static bool     s_btn_held;
 static bool     s_btn_armed;
 static uint32_t s_reset_at;   /* nonzero once the switch has been stored */
 
-/* The ROM's DataFlash commands require the buffer to be in RAM, 4-byte
- * aligned, and a 4-byte multiple in length - the vendor HAL's own flash
- * callback (Lib_Write_Flash) follows exactly that shape. Small misaligned
- * stack arrays make ERASE/WRITE return non-zero and silently change nothing. */
 static radio_mode_t radio_mode_load(void)
 {
-    __attribute__((aligned(4))) uint8_t raw[4] = { 0xFFu, 0xFFu, 0xFFu, 0xFFu };
+    uint8_t mode;
 
-    EEPROM_READ(RADIO_MODE_FLASH_OFF, raw, sizeof(raw));
-
-    if (raw[0] != RADIO_MODE_MAGIC) {
+    if (!nvm_load(&s_slot, &mode)) {
         return RADIO_MODE_RF;
     }
 
-    return (raw[1] == RADIO_MODE_BLE) ? RADIO_MODE_BLE : RADIO_MODE_RF;
+    return (mode == RADIO_MODE_BLE) ? RADIO_MODE_BLE : RADIO_MODE_RF;
 }
 
 static void radio_mode_store(radio_mode_t mode)
 {
-    __attribute__((aligned(4))) uint8_t raw[4] = { RADIO_MODE_MAGIC, (uint8_t)mode, 0u, 0u };
-    uint32_t er;
-    uint32_t wr;
+    const uint8_t flag = (uint8_t)mode;
 
-    /* Erase a whole 4 KiB block, exactly as the vendor HAL's working flash
-     * callback (Lib_Write_Flash) does, rather than the 256-byte page the
-     * header's EEPROM_PAGE_SIZE suggests. */
-    er = EEPROM_ERASE(RADIO_MODE_FLASH_OFF, EEPROM_BLOCK_SIZE);
-    wr = EEPROM_WRITE(RADIO_MODE_FLASH_OFF, raw, sizeof(raw));
+    (void)nvm_save(&s_slot, &flag);
 
-    LOG_I("MODE", "store %s er=%u wr=%u", (mode == RADIO_MODE_BLE) ? "BLE" : "RF",
-          (unsigned)er, (unsigned)wr);
+    LOG_I("MODE", "store %s", (mode == RADIO_MODE_BLE) ? "BLE" : "RF");
 }
 
 #endif /* RADIO_MODE_SELECTABLE */

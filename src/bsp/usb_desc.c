@@ -143,11 +143,11 @@ const uint8_t MyCfgDescr_HS[] = {
 /* ===========================================================================
  *  HID Mouse Report Descriptor
  *
- *  4-byte report:
- *    byte 0 = buttons (5 bits used: L/R/M/Bk/Fwd, 3 bits padding)
- *    byte 1 = X delta  (-127..+127, relative)
- *    byte 2 = Y delta  (-127..+127, relative)
- *    byte 3 = wheel    (-127..+127, relative)
+ *  6-byte report:
+ *    byte 0    = buttons (5 bits used: L/R/M/Bk/Fwd, 3 bits padding)
+ *    bytes 1-2 = X delta (int16 LE, relative)
+ *    bytes 3-4 = Y delta (int16 LE, relative)
+ *    byte 5    = wheel   (int8, relative)
  * =========================================================================== */
 const uint8_t MyMouseReportDesc[] = {
     0x05, 0x01,         // Usage Page (Generic Desktop)

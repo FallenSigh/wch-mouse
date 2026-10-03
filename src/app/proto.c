@@ -18,7 +18,7 @@
 #include "radio_mode.h"
 #include "settings.h"
 
-#define PROTO_SUM_OFF(frame, len)  ((uint16_t)(3u + (len)))
+#define PROTO_SUM_OFF(len)  ((uint16_t)(3u + (len)))
 
 /* Command codes; bit 7 marks the reply. */
 #define PROTO_CMD_GET_VERSION   0x01u
@@ -92,7 +92,7 @@ static void proto_reply(uint8_t cmd, uint8_t seq, uint8_t status, const uint8_t 
         memcpy(&s_resp[4], data, n);
     }
 
-    s_resp[PROTO_SUM_OFF(s_resp, plen)] = proto_sum(s_resp, PROTO_SUM_OFF(s_resp, plen));
+    s_resp[PROTO_SUM_OFF(plen)] = proto_sum(s_resp, PROTO_SUM_OFF(plen));
 
     if (++s_resp_gen == 0u) {
         s_resp_gen = 1u;   /* 0 means "nothing to carry" on the RF uplink */
@@ -128,12 +128,12 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
     seq  = frame[1];
     plen = frame[2];
 
-    if ((uint16_t)(PROTO_SUM_OFF(frame, plen)) > len) {
+    if (PROTO_SUM_OFF(plen) > len) {
         proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
         return;
     }
 
-    if (frame[PROTO_SUM_OFF(frame, plen)] != proto_sum(frame, PROTO_SUM_OFF(frame, plen))) {
+    if (frame[PROTO_SUM_OFF(plen)] != proto_sum(frame, PROTO_SUM_OFF(plen))) {
         proto_reply(cmd, seq, PROTO_ST_BADSUM, NULL, 0u);
         return;
     }
@@ -159,7 +159,7 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
         }
 
         case PROTO_CMD_GET_DPI: {
-            const uint16_t cpi = settings_get()->cpi;
+            const uint16_t cpi = settings_cpi();
             const uint8_t  data[2] = { (uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8) };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
@@ -173,14 +173,14 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
 
             settings_set_cpi((uint16_t)(frame[3] | (frame[4] << 8)));
 
-            const uint16_t cpi = settings_get()->cpi;
+            const uint16_t cpi = settings_cpi();
             const uint8_t  data[2] = { (uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8) };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
 
         case PROTO_CMD_GET_SENSOR: {
-            const uint8_t data[1] = { settings_get()->sensor_mode };
+            const uint8_t data[1] = { settings_mode() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -198,13 +198,13 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
 
             settings_set_mode(frame[3]);
 
-            const uint8_t data[1] = { settings_get()->sensor_mode };
+            const uint8_t data[1] = { settings_mode() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
 
         case PROTO_CMD_GET_LIFT: {
-            const uint8_t data[1] = { settings_get()->lift_cut };
+            const uint8_t data[1] = { settings_lift() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -222,7 +222,7 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
 
             settings_set_lift(frame[3]);
 
-            const uint8_t data[1] = { settings_get()->lift_cut };
+            const uint8_t data[1] = { settings_lift() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -276,9 +276,8 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
         }
 
         case PROTO_CMD_GET_RGB: {
-            const settings_t *s = settings_get();
-            const uint8_t data[6] = { s->rgb_enable, s->rgb_effect, s->rgb_brightness,
-                                      s->rgb_r, s->rgb_g, s->rgb_b };
+            uint8_t data[6];
+            settings_rgb_get(data);
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -295,15 +294,14 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
 
             settings_set_rgb(frame[3], frame[4], frame[5], frame[6], frame[7], frame[8]);
 
-            const settings_t *s = settings_get();
-            const uint8_t data[6] = { s->rgb_enable, s->rgb_effect, s->rgb_brightness,
-                                      s->rgb_r, s->rgb_g, s->rgb_b };
+            uint8_t data[6];
+            settings_rgb_get(data);
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
 
         case PROTO_CMD_GET_OLED: {
-            const uint8_t data[1] = { settings_get()->oled_enable };
+            const uint8_t data[1] = { settings_oled_enable() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -316,7 +314,7 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
 
             settings_set_oled(frame[3]);
 
-            const uint8_t data[1] = { settings_get()->oled_enable };
+            const uint8_t data[1] = { settings_oled_enable() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -324,7 +322,7 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
         /* Whether the panel, the LED rail and the BIO module may run on battery
          * as well as off the cable. */
         case PROTO_CMD_GET_PERIPH: {
-            const uint8_t data[1] = { settings_get()->periph_batt };
+            const uint8_t data[1] = { settings_periph_batt() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }
@@ -337,7 +335,7 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
 
             settings_set_periph_batt(frame[3]);
 
-            const uint8_t data[1] = { settings_get()->periph_batt };
+            const uint8_t data[1] = { settings_periph_batt() };
             proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
             break;
         }

@@ -1,4 +1,5 @@
 #include "CH58x_common.h"
+#include "board.h"
 #include "log.h"
 #include "bmi270_port.h"
 #include "bmi2_defs.h"
@@ -53,10 +54,6 @@ static uint32_t s_dcdc_hw[2];
  * 4 KiB; default is 6 KiB (BLE_MEMHEAP_SIZE in CONFIG.h). */
 __attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
 #endif
-
-/* Default sensor resolution at boot (gaming-baseline CPI). The driver
- * clamps to its supported range [50, 26000]. */
-#define MOUSE_DEFAULT_CPI   1600u
 
 __INTERRUPT void TMR3_IRQHandler() {
     if (TMR3_GetITFlag(TMR0_3_IT_CYC_END)) {
@@ -133,9 +130,9 @@ int main() {
     bio_reset();
 
     // init uart1
-    GPIOA_SetBits(GPIO_Pin_9);
-    GPIOA_ModeCfg(GPIO_Pin_8, GPIO_ModeIN_PU);
-    GPIOA_ModeCfg(GPIO_Pin_9, GPIO_ModeOut_PP_5mA);
+    GPIOA_SetBits(BOARD_UART1_TX_PIN);
+    GPIOA_ModeCfg(BOARD_UART1_RX_PIN, GPIO_ModeIN_PU);
+    GPIOA_ModeCfg(BOARD_UART1_TX_PIN, GPIO_ModeOut_PP_5mA);
     UART1_DefInit();
 
     log_init(LOG_LEVEL);
@@ -168,7 +165,7 @@ int main() {
     /* The USBHS PHY is now owned by transport_usb: it powers up only while
      * VBUS is present, so it does not burn 10-20 mA on battery. */
 
-    mouse_init(&paw);
+    mouse_init();
 
     /* Load the stored configuration first: it decides whether the panel comes
      * up at all, and the OLED bring-up blocks for a few hundred ms (reset
@@ -214,7 +211,7 @@ int main() {
     settings_apply();
     paw3395_motion_start();
 
-    power_init(&paw);
+    power_init();
 
     proto_init();
     bat_init();
@@ -230,14 +227,16 @@ int main() {
     }
 
     /* Air-mouse mode: side-1 + side-2 toggle the cursor between the optical
-     * sensor and the gyro. It re-applies this boot's optical geometry after
-     * its own paw3395_init(), so hand it the same values used above. */
+     * sensor and the gyro. It re-applies the optical geometry after its own
+     * paw3395_init(), so hand it the same persisted configuration that
+     * settings_apply() just programmed rather than the built-in defaults -
+     * otherwise leaving the mode would clobber the user's CPI/mode/lift. */
     const air_mouse_cfg_t air_cfg = {
         .paw  = &paw,
         .bmi  = &bmi,
-        .cpi  = 800,
-        .mode = PAW3395_MODE_HIGH_PERFORMANCE,
-        .lift = PAW3395_LIFT_CUT_2MM,
+        .cpi  = settings_cpi(),
+        .mode = (enum paw3395_mode)settings_mode(),
+        .lift = (enum paw3395_lift_cut)settings_lift(),
         .sens_idx = settings_air_sens_idx(),
         .odr_idx  = settings_air_odr_idx(),
     };

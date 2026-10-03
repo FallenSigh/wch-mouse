@@ -4,8 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-struct paw3395_dev;
-
 /* Standby: after POWER_IDLE_MS with no motion, buttons or wheel - and only
  * while running on battery - the firmware parks the peripherals and puts the
  * MCU into its low-power sleep.
@@ -17,7 +15,7 @@ struct paw3395_dev;
  *
  * The caller must re-arm anything derived from the core clock when
  * power_poll() reports that it slept. */
-void power_init(struct paw3395_dev *paw);
+void power_init(void);
 
 /* Defer standby: call on any input activity (motion, button, wheel). */
 void power_note_activity(uint32_t now_ms);

@@ -10,30 +10,18 @@ struct paw3395_dev;
  * settings_init() loads the stored record (or falls back to the built-in
  * defaults) and settings_apply() writes the whole record to the hardware.
  * A field update applies immediately and marks the record dirty; settings_poll()
- * flushes it once the changes have settled. */
-typedef struct __attribute__((packed)) {
-    uint16_t cpi;
-    uint8_t  sensor_mode;   /* enum paw3395_mode    */
-    uint8_t  lift_cut;      /* enum paw3395_lift_cut */
-    uint8_t  bio_acquire;   /* 0/1                  */
-    uint8_t  rgb_enable;    /* 0/1                  */
-    uint8_t  rgb_effect;    /* RGB_FX_EFFECT_*      */
-    uint8_t  rgb_brightness;
-    uint8_t  rgb_r;
-    uint8_t  rgb_g;
-    uint8_t  rgb_b;
-    uint8_t  oled_enable;   /* 0/1                  */
-    uint8_t  report_rate_idx;
-    uint8_t  report_rate_rf_idx;
-    uint8_t  report_rate_ble_idx;
-    uint8_t  periph_batt;   /* 0/1: panel/rail/BIO may run on battery */
-    uint8_t  air_sens_idx;  /* air-mouse pointer sensitivity preset */
-    uint8_t  air_odr_idx;   /* air-mouse IMU output-data-rate preset */
-    uint8_t  motor_enable;  /* 0/1: vibration motor allowed            */
-} settings_t;
-
+ * flushes it once the changes have settled.
+ *
+ * The storage layout is private - read fields through the accessors below. */
 void settings_init(struct paw3395_dev *paw);
-const settings_t *settings_get(void);
+
+uint16_t settings_cpi(void);
+uint8_t  settings_mode(void);         /* enum paw3395_mode     */
+uint8_t  settings_lift(void);         /* enum paw3395_lift_cut */
+uint8_t  settings_oled_enable(void);  /* 0/1                   */
+uint8_t  settings_periph_batt(void);  /* 0/1                   */
+/* Fills rgb[6] = { enable, effect, brightness, r, g, b }. */
+void     settings_rgb_get(uint8_t rgb[6]);
 
 /* Write the whole record to the sensor and the BIO module (boot path). */
 void settings_apply(void);

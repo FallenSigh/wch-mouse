@@ -1,28 +1,12 @@
 #include "mouse.h"
 #include "CH58x_common.h"
+#include "board.h"
 #include "air_mouse.h"
 #include "transport.h"
-#include "paw3395.h"
 #include "paw3395_port.h"
 #include "log.h"
 #include "power.h"
 #include "radio_mode.h"
-
-#define BTN_LEFT_PIN      GPIO_Pin_7     // PB7   PR_SW1
-#define BTN_RIGHT_PIN     GPIO_Pin_1     // PB1   PR_SW2
-#define BTN_MID_PIN       GPIO_Pin_9     // PB9   PR_SW3
-#define BTN_SIDE1_PIN     GPIO_Pin_11    // PB11  PR_SW4 (Back)
-#define BTN_SIDE2_PIN     GPIO_Pin_4     // PB4   PR_SW5 (Forward)
-#define ENC_A_PIN         GPIO_Pin_8     // PB8   ENC_A
-#define ENC_B_PIN         GPIO_Pin_19    // PB19  ENC_B
-
-#define INPUT_ALL_PINS    (BTN_LEFT_PIN | BTN_RIGHT_PIN | BTN_MID_PIN \
-                           | BTN_SIDE1_PIN | BTN_SIDE2_PIN | ENC_A_PIN | ENC_B_PIN)
-
-/* Standby wake-on-input. Only PB0-PB15 carry a GPIOB interrupt bit, so the
- * encoder's B phase (PB19) cannot be a wake source. */
-#define INPUT_WAKE_PINS   ((uint16_t)(BTN_LEFT_PIN | BTN_RIGHT_PIN | BTN_MID_PIN \
-                                      | BTN_SIDE1_PIN | BTN_SIDE2_PIN | ENC_A_PIN))
 
 static volatile uint8_t s_btn_stable;
 static volatile uint8_t s_btn_raw_prev;
@@ -31,8 +15,6 @@ static volatile uint32_t s_btn_raw_ms;
 /* Set by the GPIOB wake ISR so a press that is over before the first scan
  * still counts as activity instead of being lost. */
 static volatile bool s_btn_wake;
-
-static struct paw3395_dev *s_sensor;
 
 static uint32_t s_stat_ms;
 static uint32_t s_pub_cnt;
@@ -93,8 +75,8 @@ static int8_t encoder_update(uint32_t pins)
         0,  1, -1,  0
     };
 
-    const uint8_t a = (pins & ENC_A_PIN) ? 1u : 0u;
-    const uint8_t b = (pins & ENC_B_PIN) ? 1u : 0u;
+    const uint8_t a = (pins & BOARD_ENC_A_PIN) ? 1u : 0u;
+    const uint8_t b = (pins & BOARD_ENC_B_PIN) ? 1u : 0u;
     const uint8_t state = (uint8_t)((a << 1) | b);
 
     s_enc_accum = (int8_t)(s_enc_accum + quad[(s_enc_prev << 2) | state]);
@@ -112,11 +94,9 @@ static int8_t encoder_update(uint32_t pins)
     return (int8_t)(steps * ENC_WHEEL_SIGN);
 }
 
-void mouse_init(struct paw3395_dev *sensor)
+void mouse_init(void)
 {
-    s_sensor = sensor;
-
-    GPIOB_ModeCfg(INPUT_ALL_PINS, GPIO_ModeIN_PU);
+    GPIOB_ModeCfg(BOARD_INPUT_ALL_PINS, GPIO_ModeIN_PU);
 
     s_btn_stable   = HID_BTN_MASK;
     s_btn_raw_prev = HID_BTN_MASK;
@@ -128,7 +108,7 @@ void mouse_init(struct paw3395_dev *sensor)
 
     const uint32_t pins = GPIOB_ReadPort();
 
-    s_enc_prev  = (uint8_t)(((pins & ENC_A_PIN) ? 2u : 0u) | ((pins & ENC_B_PIN) ? 1u : 0u));
+    s_enc_prev  = (uint8_t)(((pins & BOARD_ENC_A_PIN) ? 2u : 0u) | ((pins & BOARD_ENC_B_PIN) ? 1u : 0u));
     s_enc_accum = 0;
 
     LOG_I("MOUSE", "L=PB7 R=PB1 M=PB9 S1=PB11 S2=PB4 ENC_A=PB8 ENC_B=PB19");
@@ -136,20 +116,20 @@ void mouse_init(struct paw3395_dev *sensor)
 
 void mouse_wake_arm(void)
 {
-    GPIOB_ITModeCfg(INPUT_WAKE_PINS, GPIO_ITMode_FallEdge);
+    GPIOB_ITModeCfg(BOARD_INPUT_WAKE_PINS, GPIO_ITMode_FallEdge);
 }
 
 void mouse_wake_disarm(void)
 {
-    R16_PB_INT_EN &= (uint16_t)~INPUT_WAKE_PINS;
-    R16_PB_INT_IF = INPUT_WAKE_PINS;
+    R16_PB_INT_EN &= (uint16_t)~BOARD_INPUT_WAKE_PINS;
+    R16_PB_INT_IF = BOARD_INPUT_WAKE_PINS;
 }
 
 /* Runs from RAM: in standby this fires as the wake-up event, when the flash and
  * the 32M clock are still down, so it only records the edge and clears it. */
 __INTERRUPT __HIGH_CODE void GPIOB_IRQHandler(void)
 {
-    R16_PB_INT_IF = INPUT_WAKE_PINS;
+    R16_PB_INT_IF = BOARD_INPUT_WAKE_PINS;
     s_btn_wake = true;
 }
 
@@ -168,11 +148,11 @@ void mouse_scan(uint32_t now_ms)
         active     = 1;
     }
 
-    if (!(pins & BTN_LEFT_PIN))   raw_btn |= HID_BTN_LEFT;
-    if (!(pins & BTN_RIGHT_PIN))  raw_btn |= HID_BTN_RIGHT;
-    if (!(pins & BTN_MID_PIN))    raw_btn |= HID_BTN_MID;
-    if (!(pins & BTN_SIDE1_PIN))  raw_btn |= HID_BTN_BACK;
-    if (!(pins & BTN_SIDE2_PIN))  raw_btn |= HID_BTN_FWD;
+    if (!(pins & BOARD_BTN_LEFT_PIN))   raw_btn |= HID_BTN_LEFT;
+    if (!(pins & BOARD_BTN_RIGHT_PIN))  raw_btn |= HID_BTN_RIGHT;
+    if (!(pins & BOARD_BTN_MID_PIN))    raw_btn |= HID_BTN_MID;
+    if (!(pins & BOARD_BTN_SIDE1_PIN))  raw_btn |= HID_BTN_BACK;
+    if (!(pins & BOARD_BTN_SIDE2_PIN))  raw_btn |= HID_BTN_FWD;
 
     if (raw_btn != s_btn_raw_prev) {
         s_btn_raw_prev = raw_btn;

@@ -32,7 +32,6 @@
 #include "motor.h"
 #include "mouse.h"
 #include "oled.h"
-#include "paw3395.h"
 #include "paw3395_port.h"
 #include "radio_mode.h"
 #include "rgb.h"
@@ -47,13 +46,13 @@
  * the tick timers and the radio are all clocked from here. */
 #define POWER_CLK_OFF_MASK ((uint16_t)(0xFFFFu & (uint32_t)~RB_SLP_CLK_UART1))
 
-static struct paw3395_dev *s_paw;
+static bool                s_inited;
 static uint32_t            s_idle_from_ms;
 static bool                s_tethered;
 
-void power_init(struct paw3395_dev *paw)
+void power_init(void)
 {
-    s_paw          = paw;
+    s_inited       = true;
     s_idle_from_ms = 0u;
 }
 
@@ -171,7 +170,7 @@ static void standby_restore(void)
 
 bool power_poll(uint32_t now_ms)
 {
-    if (s_paw == NULL) {
+    if (!s_inited) {
         return false;
     }
 

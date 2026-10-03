@@ -1,11 +1,10 @@
 /*
  * src/app/settings.c - persist the user configuration in the DataFlash.
  *
- * One 16-byte record in a 4 KiB DataFlash block. The ROM's EEPROM_* commands
- * address it by OFFSET (0 = 0x00070000), erase a whole 4 KiB block, and need a
- * RAM, 4-byte aligned buffer whose length is a multiple of 4 - the same shape
- * radio_mode.c uses. The offset is a different block from radio_mode's 0x0000
- * and clear of the vendor's 0x6000 / 0x7000, so a save here cannot wipe them.
+ * The record lives in its own 4 KiB DataFlash block through the generic nvm
+ * store (src/bsp/nvm.c), which owns the ROM EEPROM_* quirks and the magic byte.
+ * This block's offset differs from radio_mode's 0x0000 and is clear of the
+ * vendor's 0x6000 / 0x7000, so a save here cannot wipe them.
  */
 
 #include "settings.h"
@@ -16,13 +15,11 @@
 #include "bio.h"
 #include "log.h"
 #include "motor.h"
+#include "nvm.h"
 #include "oled.h"
 #include "paw3395.h"
 #include "paw3395_port.h"
 #include "rgb_fx.h"
-
-#define SETTINGS_FLASH_OFF   0x1000u
-#define SETTINGS_MAGIC       0xC7u
 
 /* What a blank device boots with. */
 #define SETTINGS_DEF_CPI          800u
@@ -64,12 +61,12 @@ static const uint16_t s_rate_hz[] = { 1000u, 125u, 250u, 500u, 2000u, 4000u, 800
 /* Vibration feedback is on by default. */
 #define SETTINGS_DEF_MOTOR_ENABLE  1u
 
-/* Fixed on-flash layout. The per-link report rates reuse the two reserved bytes
- * and periph_batt is appended, so a record written before either existed still
- * lines up field for field: those bytes read back as 0xFF from the erase and the
- * per-field checks below fall back to the defaults. */
+/* Fixed on-flash layout; nvm owns the leading magic byte. The per-link report
+ * rates reuse the two reserved bytes and periph_batt is appended, so a record
+ * written before either existed still lines up field for field: those bytes read
+ * back as 0xFF from the erase and the per-field checks below fall back to the
+ * defaults. */
 typedef struct __attribute__((packed)) {
-    uint8_t  magic;
     uint8_t  report_rate_rf_idx;
     uint16_t cpi;
     uint8_t  sensor_mode;
@@ -91,6 +88,33 @@ typedef struct __attribute__((packed)) {
     uint8_t  motor_enable;
     uint8_t  reserved[3];  /* keeps the record a 4-byte multiple */
 } settings_record_t;
+
+/* The payload must keep the size the record had before nvm owned the magic
+ * byte, so an already-programmed device keeps its stored configuration. */
+typedef char settings_record_size_check[(sizeof(settings_record_t) == 23u) ? 1 : -1];
+
+typedef struct __attribute__((packed)) {
+    uint16_t cpi;
+    uint8_t  sensor_mode;
+    uint8_t  lift_cut;
+    uint8_t  bio_acquire;
+    uint8_t  rgb_enable;
+    uint8_t  rgb_effect;
+    uint8_t  rgb_brightness;
+    uint8_t  rgb_r;
+    uint8_t  rgb_g;
+    uint8_t  rgb_b;
+    uint8_t  oled_enable;
+    uint8_t  report_rate_idx;
+    uint8_t  report_rate_rf_idx;
+    uint8_t  report_rate_ble_idx;
+    uint8_t  periph_batt;
+    uint8_t  air_sens_idx;
+    uint8_t  air_odr_idx;
+    uint8_t  motor_enable;
+} settings_t;
+
+static const nvm_slot_t s_slot = { 0x1000u, 0xC7u, sizeof(settings_record_t) };
 
 static struct paw3395_dev *s_paw;
 
@@ -126,11 +150,8 @@ static void settings_dirty(void)
 
 static void settings_save(void)
 {
-    __attribute__((aligned(4))) settings_record_t rec;
-    uint32_t er;
-    uint32_t wr;
+    settings_record_t rec;
 
-    rec.magic          = SETTINGS_MAGIC;
     rec.report_rate_rf_idx = s_cur.report_rate_rf_idx;
     rec.cpi            = s_cur.cpi;
     rec.sensor_mode    = s_cur.sensor_mode;
@@ -154,24 +175,20 @@ static void settings_save(void)
     rec.reserved[1]    = 0u;
     rec.reserved[2]    = 0u;
 
-    er = EEPROM_ERASE(SETTINGS_FLASH_OFF, EEPROM_BLOCK_SIZE);
-    wr = EEPROM_WRITE(SETTINGS_FLASH_OFF, (uint8_t *)&rec, sizeof(rec));
+    (void)nvm_save(&s_slot, &rec);
 
-    LOG_I("SET", "save cpi=%u mode=%u lift=%u bio=%u er=%u wr=%u",
-          (unsigned)s_cur.cpi, (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut,
-          (unsigned)s_cur.bio_acquire, (unsigned)er, (unsigned)wr);
+    LOG_I("SET", "save cpi=%u mode=%u lift=%u bio=%u", (unsigned)s_cur.cpi,
+          (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut, (unsigned)s_cur.bio_acquire);
 }
 
 void settings_init(struct paw3395_dev *paw)
 {
-    __attribute__((aligned(4))) settings_record_t rec;
+    settings_record_t rec;
 
     s_paw   = paw;
     s_dirty = false;
 
-    EEPROM_READ(SETTINGS_FLASH_OFF, (uint8_t *)&rec, sizeof(rec));
-
-    if (rec.magic != SETTINGS_MAGIC) {
+    if (!nvm_load(&s_slot, &rec)) {
         LOG_I("SET", "defaults cpi=%u mode=%u lift=%u bio=%u", (unsigned)s_cur.cpi,
               (unsigned)s_cur.sensor_mode, (unsigned)s_cur.lift_cut,
               (unsigned)s_cur.bio_acquire);
@@ -204,9 +221,39 @@ void settings_init(struct paw3395_dev *paw)
           (unsigned)s_cur.oled_enable, (unsigned)s_rate_hz[s_cur.report_rate_idx]);
 }
 
-const settings_t *settings_get(void)
+uint16_t settings_cpi(void)
 {
-    return &s_cur;
+    return s_cur.cpi;
+}
+
+uint8_t settings_mode(void)
+{
+    return s_cur.sensor_mode;
+}
+
+uint8_t settings_lift(void)
+{
+    return s_cur.lift_cut;
+}
+
+uint8_t settings_oled_enable(void)
+{
+    return s_cur.oled_enable;
+}
+
+uint8_t settings_periph_batt(void)
+{
+    return s_cur.periph_batt;
+}
+
+void settings_rgb_get(uint8_t rgb[6])
+{
+    rgb[0] = s_cur.rgb_enable;
+    rgb[1] = s_cur.rgb_effect;
+    rgb[2] = s_cur.rgb_brightness;
+    rgb[3] = s_cur.rgb_r;
+    rgb[4] = s_cur.rgb_g;
+    rgb[5] = s_cur.rgb_b;
 }
 
 /* The panel, the rail and the BIO module run off the cable, or on battery when
