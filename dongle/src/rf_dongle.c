@@ -36,7 +36,15 @@ static rfipTx_t s_tx_param;
 static volatile bool s_rx_ready;
 static uint32_t s_rx_n;
 
-static uint8_t s_cmd[RF_CMD_MAX];       /* the host's last SET frame */
+/* The host's newest SET frame: the USB ISR only stages it and bumps s_cmd_gen.
+ * The RF ISR owns the active rotation below, so a command that arrives
+ * mid-rotation can never tear the pieces that are going out. */
+static uint8_t s_cmd_stage[RF_CMD_MAX];
+static volatile uint16_t s_cmd_stage_len; /* 0 when there is nothing staged */
+static volatile uint8_t s_cmd_gen;        /* bumped on every host SET */
+static uint8_t s_cmd_seen;                /* last generation adopted */
+
+static uint8_t s_cmd[RF_CMD_MAX];       /* the frame being rotated out */
 static uint16_t s_cmd_len;              /* 0 when there is nothing to carry */
 static uint16_t s_cmd_off;              /* next piece to hand out */
 static uint16_t s_cmd_left;             /* replies still carrying it */
@@ -46,7 +54,7 @@ static volatile uint16_t s_cmd_prev_ok; /* the answer held when it did */
 
 static uint8_t s_reply[RF_CMD_MAX];    /* assembly for the current pass */
 static uint8_t s_reply_ok[RF_CMD_MAX]; /* the last whole answer: what a read-back serves */
-static uint16_t s_reply_ok_len;        /* its length; 0 = nothing to serve */
+static volatile uint16_t s_reply_ok_len; /* its length; 0 = nothing to serve */
 static uint16_t s_reply_len;           /* pieces collected so far */
 static uint16_t s_reply_total;         /* 0 until its header is in */
 static uint8_t s_reply_id;             /* the generation being collected */
@@ -64,37 +72,29 @@ static void rf_rx_start(void) {
 }
 
 /* The host writes the same vendor Feature report it writes to the mouse. The
- * dongle has no protocol module of its own, so it only captures the frame for
- * the RF side - the mouse is what runs it. Called from the USB ISR, so the copy
- * is the whole body. */
+ * dongle has no protocol module of its own, so it only stages the frame; the RF
+ * ISR adopts it and the mouse is what runs it. Called from the USB ISR, so the
+ * RF ISR is kept out until the frame is whole and its generation is visible. */
 void proto_handle_set(const uint8_t *frame, uint16_t len) {
+    uint16_t n;
+
     if ((frame == NULL) || (len == 0u)) {
         return;
     }
 
-    s_cmd_len = (len > RF_CMD_MAX) ? RF_CMD_MAX : len;
-    memcpy(s_cmd, frame, s_cmd_len);
+    n = (len > RF_CMD_MAX) ? RF_CMD_MAX : len;
 
-    if (++s_cmd_id == 0u) {
-        s_cmd_id = 1u; /* 0 means "nothing pending" on the wire */
+    PFIC_DisableIRQ(BLEB_IRQn);
+    PFIC_DisableIRQ(BLEL_IRQn);
+    memcpy(s_cmd_stage, frame, n);
+    s_cmd_stage_len = n;
+    if (++s_cmd_gen == 0u) {
+        s_cmd_gen = 1u; /* 0 means "nothing staged" */
     }
+    PFIC_EnableIRQ(BLEB_IRQn);
+    PFIC_EnableIRQ(BLEL_IRQn);
 
-    s_cmd_off = 0u;
-    s_cmd_left = RF_CMD_REPEAT;
-    s_cmd_trace = s_cmd_len;
-
-    /* The answer on hand belongs to the previous request, so a read-back would
-     * hand it out as if it were this one's. Drop it, and ignore the re-sends of
-     * it that are still in flight: GET_FEATURE then serves zeros until the
-     * mouse's own answer has streamed in, which the host tells apart from a
-     * real reply and waits out. */
-    s_cmd_prev_ok = s_reply_ok_len; /* 0 means it never arrived at all */
-    s_reply_ignore = s_reply_id;
-    s_reply_id = 0u;
-    s_reply_len = 0u;
-    s_reply_total = 0u;
-    s_reply_ok_len = 0u;
-    s_reply_done = false;
+    s_cmd_trace = n;
 }
 
 /* Collect the mouse's answer out of the uplink frames it streams. A new
@@ -153,8 +153,8 @@ static void rf_reply_feed(const RfPacket_t *pkt) {
      * between two passes. A nonzero restart count is the link tearing a pass up. */
     if (!s_reply_done && (s_reply_total != 0u) && (s_reply_len >= s_reply_total)) {
         s_reply_done = true;
-        s_reply_ok_len = s_reply_total;
         memcpy(s_reply_ok, s_reply, s_reply_total);
+        s_reply_ok_len = s_reply_total;
         LOG_I("RF", "reply id=%u chunks=%u restarts=%u", (unsigned)s_reply_id,
               (unsigned)s_reply_chunks, (unsigned)s_reply_restarts);
     }
@@ -163,22 +163,64 @@ static void rf_reply_feed(const RfPacket_t *pkt) {
 /* GET_FEATURE on the host side. Zeros until a whole answer has arrived: the
  * caller's checksum then rejects it instead of passing off a torn frame. */
 void proto_handle_get(uint8_t *frame, uint16_t len) {
+    uint16_t have;
+
     if ((frame == NULL) || (len == 0u)) {
         return;
     }
 
     memset(frame, 0, len);
-    if (s_reply_ok_len == 0u) {
-        return;
-    }
 
-    memcpy(frame, s_reply_ok, (len < RF_CMD_MAX) ? len : RF_CMD_MAX);
+    /* The RF ISR owns the snapshot; keep it out while the answer is copied so a
+     * fresh one cannot land halfway through the read. */
+    PFIC_DisableIRQ(BLEB_IRQn);
+    PFIC_DisableIRQ(BLEL_IRQn);
+    have = s_reply_ok_len;
+    if (have != 0u) {
+        memcpy(frame, s_reply_ok, (len < have) ? len : have);
+    }
+    PFIC_EnableIRQ(BLEB_IRQn);
+    PFIC_EnableIRQ(BLEL_IRQn);
 }
 
 /* Rotate the pending frame through the replies. Chunk 0 restarts the mouse's
- * assembly, so handing the whole frame out again is the retry. */
+ * assembly, so handing the whole frame out again is the retry. The active
+ * rotation is the RF ISR's alone; the host can only stage new frames. */
 static void rf_ack_fill_cmd(void) {
     uint16_t n;
+    uint16_t staged;
+
+    if (s_cmd_gen != s_cmd_seen) {
+        PFIC_DisableIRQ(USB_IRQn);
+        staged = s_cmd_stage_len;
+        if (staged > 0u) {
+            memcpy(s_cmd, s_cmd_stage, staged);
+        }
+        s_cmd_seen = s_cmd_gen;
+        PFIC_EnableIRQ(USB_IRQn);
+
+        if (staged > 0u) {
+            s_cmd_len = staged;
+            s_cmd_off = 0u;
+            s_cmd_left = RF_CMD_REPEAT;
+            if (++s_cmd_id == 0u) {
+                s_cmd_id = 1u; /* 0 means "nothing pending" on the wire */
+            }
+
+            /* The answer on hand belongs to the previous request, so a
+             * read-back would hand it out as if it were this one's. Drop it
+             * and ignore the re-sends of it that are still in flight:
+             * GET_FEATURE then serves zeros until the mouse's own answer has
+             * streamed in, which the host tells apart from a real reply. */
+            s_cmd_prev_ok = s_reply_ok_len; /* 0 means it never arrived at all */
+            s_reply_ignore = s_reply_id;
+            s_reply_id = 0u;
+            s_reply_len = 0u;
+            s_reply_total = 0u;
+            s_reply_ok_len = 0u;
+            s_reply_done = false;
+        }
+    }
 
     if ((s_cmd_len == 0u) || (s_cmd_left == 0u)) {
         s_ack.cmd_id = 0u;
