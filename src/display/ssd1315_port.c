@@ -107,6 +107,6 @@ void ssd1315_interface_debug_print(const char *const fmt, ...) {
     if (n > 0) {
         /* The library's own messages are failure reports, so surface them as
          * warnings rather than at debug level. */
-        log_printf(LOG_LVL_WARN, "SSD1315", "%s", line);
+        LOG_W("SSD1315", "%s", line);
     }
 }
