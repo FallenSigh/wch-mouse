@@ -29,21 +29,21 @@
 #include <stddef.h>
 #include <string.h>
 
-#define RGB_PERIOD           100U    /* T_period ~ 1.60 us                  */
-#define RGB_CCR_0             22U    /* T0H ~ 352 ns                        */
-#define RGB_CCR_1             53U    /* T1H ~ 848 ns                        */
-#define RGB_RESET_PERIODS    200U    /* > 280 us reset                      */
+#define RGB_PERIOD        100U /* T_period ~ 1.60 us                  */
+#define RGB_CCR_0         22U  /* T0H ~ 352 ns                        */
+#define RGB_CCR_1         53U  /* T1H ~ 848 ns                        */
+#define RGB_RESET_PERIODS 200U /* > 280 us reset                      */
 
-#define RGB_BITS_PER_LED       24U
-#define RGB_BITBUF_LEN  (RGB_LED_COUNT * RGB_BITS_PER_LED + RGB_RESET_PERIODS)
-#define RGB_FRAME_BYTES (RGB_LED_COUNT * RGB_BITS_PER_LED * 4U)   /* bit words, no tail */
+#define RGB_BITS_PER_LED 24U
+#define RGB_BITBUF_LEN   (RGB_LED_COUNT * RGB_BITS_PER_LED + RGB_RESET_PERIODS)
+#define RGB_FRAME_BYTES  (RGB_LED_COUNT * RGB_BITS_PER_LED * 4U) /* bit words, no tail */
 
 /* CCR is written 32-bit wide by the DMA into the TIM1 FIFO. Only the low
  * bits are interpreted as the active width; the rest are ignored. We pack
  * the actual CCR in the low byte for clarity. */
 static __attribute__((aligned(4))) uint32_t s_bitbuf[RGB_BITBUF_LEN];
-static uint8_t  s_color[RGB_LED_COUNT * 3];   /* GRB, one byte per channel */
-static uint8_t  s_brightness = 255;          /* 0..255, applied at fill time */
+static uint8_t s_color[RGB_LED_COUNT * 3]; /* GRB, one byte per channel */
+static uint8_t s_brightness = 255;         /* 0..255, applied at fill time */
 
 /* Set by rgb_show()/rgb_set_enable(), consumed by rgb_poll(). */
 static volatile bool s_dirty;
@@ -55,19 +55,17 @@ static bool s_rail_on;
 
 /* Scale an 8-bit colour byte by the current brightness, with rounding so
  * 255 stays 255 instead of dropping to 254 after /255. */
-static inline uint8_t apply_brightness(uint8_t v)
-{
+static inline uint8_t apply_brightness(uint8_t v) {
     return (uint8_t)((((uint16_t)v * s_brightness) + 127U) / 255U);
 }
 
-static void fill_bitbuf(void)
-{
+static void fill_bitbuf(void) {
     uint32_t *bp = s_bitbuf;
 
     for (uint8_t i = 0; i < RGB_LED_COUNT; i++) {
-        uint32_t word = ((uint32_t)apply_brightness(s_color[i * 3 + 0]) << 16)   /* G */
-                      | ((uint32_t)apply_brightness(s_color[i * 3 + 1]) << 8)    /* R */
-                      |  (uint32_t)apply_brightness(s_color[i * 3 + 2]);         /* B */
+        uint32_t word = ((uint32_t)apply_brightness(s_color[i * 3 + 0]) << 16)  /* G */
+                        | ((uint32_t)apply_brightness(s_color[i * 3 + 1]) << 8) /* R */
+                        | (uint32_t)apply_brightness(s_color[i * 3 + 2]);       /* B */
         for (uint8_t bit = 0; bit < 24; bit++) {
             *bp++ = (word & 0x800000U) ? RGB_CCR_1 : RGB_CCR_0;
             word <<= 1;
@@ -76,11 +74,11 @@ static void fill_bitbuf(void)
     /* WS2812 latch: every period here is CCR=0, so PB10 stays low; the tail
      * is long enough (>= RGB_RESET_PERIODS * RGB_PERIOD) to satisfy the
      * >280 us reset. */
-    for (uint16_t i = 0; i < RGB_RESET_PERIODS; i++) *bp++ = 0;
+    for (uint16_t i = 0; i < RGB_RESET_PERIODS; i++)
+        *bp++ = 0;
 }
 
-void rgb_init(void)
-{
+void rgb_init(void) {
     /* Remap TIM1 CH1 to PB10. RB_PIN_TMR1 default is 0, so PA10 would
      * be the timer pin -- explicitly enable the alternate. */
     if (!(R16_PIN_ALTERNATE & RB_PIN_TMR1)) {
@@ -89,7 +87,7 @@ void rgb_init(void)
 
     /* Configure the data pin for the timer to drive; enable the rail. */
     GPIOB_ModeCfg(BOARD_RGB_DIN_PIN, GPIO_ModeOut_PP_5mA);
-    GPIOB_ModeCfg(BOARD_RGB_EN_PIN,  GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(BOARD_RGB_EN_PIN, GPIO_ModeOut_PP_5mA);
     GPIOB_SetBits(BOARD_RGB_EN_PIN);
     s_rail_on = true;
 
@@ -108,30 +106,22 @@ void rgb_init(void)
      * into the TIM1 FIFO, which becomes the next CCR. The DMA restarts
      * from BEG every time the buffer is exhausted, so the LED chain
      * keeps latching the current frame until rgb_show() reloads it. */
-    TMR1_DMACfg(ENABLE,
-                (uint32_t)s_bitbuf,
-                (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
-                Mode_LOOP);
+    TMR1_DMACfg(ENABLE, (uint32_t)s_bitbuf, (uint32_t)(s_bitbuf + RGB_BITBUF_LEN), Mode_LOOP);
 
     TMR1_PWMEnable();
     TMR1_Enable();
 }
 
-void rgb_off(void)
-{
+void rgb_off(void) {
     memset(s_color, 0, sizeof(s_color));
 }
 
-void rgb_set_enable(bool on)
-{
+void rgb_set_enable(bool on) {
     if (on) {
         GPIOB_SetBits(BOARD_RGB_EN_PIN);
         /* Re-arm the frame DMA so the chain is clocked again. */
-        TMR1_DMACfg(ENABLE,
-                    (uint32_t)s_bitbuf,
-                    (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
-                    Mode_LOOP);
-        s_dirty   = true;
+        TMR1_DMACfg(ENABLE, (uint32_t)s_bitbuf, (uint32_t)(s_bitbuf + RGB_BITBUF_LEN), Mode_LOOP);
+        s_dirty = true;
         s_rail_on = true;
     } else {
         /* A WS2812 shows whatever frame it latched last for as long as it has
@@ -148,47 +138,41 @@ void rgb_set_enable(bool on)
         fill_bitbuf();
 
         /* Clock the black frame out, then park and cut. */
-        TMR1_DMACfg(ENABLE,
-                    (uint32_t)s_bitbuf,
-                    (uint32_t)(s_bitbuf + RGB_BITBUF_LEN),
-                    Mode_LOOP);
-        mDelayuS(2000u);            /* one frame + reset tail, any chain length */
+        TMR1_DMACfg(ENABLE, (uint32_t)s_bitbuf, (uint32_t)(s_bitbuf + RGB_BITBUF_LEN), Mode_LOOP);
+        mDelayuS(2000u); /* one frame + reset tail, any chain length */
 
         TMR1_DMACfg(DISABLE, 0u, 0u, Mode_LOOP);
         TMR1_PWMActDataWidth(0u);
-        s_dirty   = false;
+        s_dirty = false;
         s_rail_on = false;
         GPIOB_ResetBits(BOARD_RGB_EN_PIN);
     }
 }
 
-bool rgb_rail_enabled(void)
-{
+bool rgb_rail_enabled(void) {
     return s_rail_on;
 }
 
-void rgb_set_brightness(uint8_t b)
-{
+void rgb_set_brightness(uint8_t b) {
     /* Clamp at the upper bound; 0 is a valid "off" multiplier. */
     s_brightness = b;
 }
 
-void rgb_set_pixel(uint8_t i, uint8_t r, uint8_t g, uint8_t b)
-{
-    if (i >= RGB_LED_COUNT) return;
+void rgb_set_pixel(uint8_t i, uint8_t r, uint8_t g, uint8_t b) {
+    if (i >= RGB_LED_COUNT)
+        return;
     /* WS2812 takes GRB, MSB-first per colour. */
     s_color[i * 3 + 0] = g;
     s_color[i * 3 + 1] = r;
     s_color[i * 3 + 2] = b;
 }
 
-void rgb_set_all(uint8_t r, uint8_t g, uint8_t b)
-{
-    for (uint8_t i = 0; i < RGB_LED_COUNT; i++) rgb_set_pixel(i, r, g, b);
+void rgb_set_all(uint8_t r, uint8_t g, uint8_t b) {
+    for (uint8_t i = 0; i < RGB_LED_COUNT; i++)
+        rgb_set_pixel(i, r, g, b);
 }
 
-void rgb_show(void)
-{
+void rgb_show(void) {
     /* Only record the request: rgb_poll() does the work. Stopping the DMA here
      * would freeze the last CCR wherever the frame happened to be, and a CCR
      * left on a "1" bit keeps the TIM re-emitting it - the chain loses bit
@@ -196,8 +180,7 @@ void rgb_show(void)
     s_dirty = true;
 }
 
-void rgb_poll(uint32_t now_ms)
-{
+void rgb_poll(uint32_t now_ms) {
     uint32_t base;
     uint32_t now;
 
@@ -212,7 +195,7 @@ void rgb_poll(uint32_t now_ms)
      * clocked a half-updated frame and the DMA is never stopped. The DMA
      * registers carry the RAM offset rather than the full address. */
     base = (uint32_t)(uintptr_t)s_bitbuf & 0x1FFFFu;
-    now  = R32_TMR1_DMA_NOW & 0x1FFFFu;
+    now = R32_TMR1_DMA_NOW & 0x1FFFFu;
 
     if (((now - base) & 0x1FFFFu) >= RGB_FRAME_BYTES) {
         fill_bitbuf();

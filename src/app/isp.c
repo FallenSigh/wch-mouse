@@ -23,17 +23,16 @@
 #include "bat.h"
 #include "log.h"
 
-#define ISP_BTN_HOLD_MS  3000u
+#define ISP_BTN_HOLD_MS 3000u
 
 static uint32_t s_btn_ms;
-static bool     s_btn_held;
+static bool s_btn_held;
 
 /* Erasing the entry block pulls the ground out from under this code, so the
  * whole path has to run from RAM and interrupts stay off until the reset. The
  * reset sequence is the published one for this trick. */
 __HIGH_CODE
-static void isp_enter(void)
-{
+static void isp_enter(void) {
     uint32_t irq_status;
 
     LOG_I("ISP", "entering ROM ISP");
@@ -56,13 +55,11 @@ static void isp_enter(void)
     }
 }
 
-void isp_init(void)
-{
+void isp_init(void) {
     GPIOB_ModeCfg(BOARD_ISP_BTN_PIN, GPIO_ModeIN_PU);
 }
 
-void isp_poll(uint32_t now_ms)
-{
+void isp_poll(uint32_t now_ms) {
     bool pressed;
 
     /* Only a cabled host can reflash and this is not self-recoverable, so the
@@ -76,7 +73,7 @@ void isp_poll(uint32_t now_ms)
 
     if (pressed != s_btn_held) {
         s_btn_held = pressed;
-        s_btn_ms   = now_ms;
+        s_btn_ms = now_ms;
         return;
     }
 

@@ -10,8 +10,7 @@
 /* Protocol-stack heap (see wch-mouse/src/main.c). */
 __attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
 
-int main(void)
-{
+int main(void) {
     HSECFG_Capacitance(HSECap_12p);
     SetSysClock(SYSCLK_FREQ);
 
@@ -35,7 +34,7 @@ int main(void)
     LOG_I("DONGLE", "ready");
 
     while (1) {
-        TMOS_SystemProcess();   /* 625 us tick, main-loop context only */
+        TMOS_SystemProcess(); /* 625 us tick, main-loop context only */
         rf_dongle_poll();
     }
 }

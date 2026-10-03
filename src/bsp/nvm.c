@@ -20,13 +20,11 @@
 static __attribute__((aligned(4))) uint8_t s_buf[NVM_MAX_RECORD];
 
 /* On-flash size of [magic][payload], rounded up to a 4-byte multiple. */
-static uint16_t nvm_round(uint16_t len)
-{
+static uint16_t nvm_round(uint16_t len) {
     return (uint16_t)((1u + (uint32_t)len + 3u) & ~3u);
 }
 
-static bool nvm_check(const nvm_slot_t *slot)
-{
+static bool nvm_check(const nvm_slot_t *slot) {
     if ((slot == NULL) || (slot->len == 0u)) {
         return false;
     }
@@ -48,8 +46,7 @@ static bool nvm_check(const nvm_slot_t *slot)
     return true;
 }
 
-bool nvm_load(const nvm_slot_t *slot, void *payload)
-{
+bool nvm_load(const nvm_slot_t *slot, void *payload) {
     if ((payload == NULL) || !nvm_check(slot)) {
         return false;
     }
@@ -64,8 +61,7 @@ bool nvm_load(const nvm_slot_t *slot, void *payload)
     return true;
 }
 
-bool nvm_save(const nvm_slot_t *slot, const void *payload)
-{
+bool nvm_save(const nvm_slot_t *slot, const void *payload) {
     if ((payload == NULL) || !nvm_check(slot)) {
         return false;
     }

@@ -43,7 +43,7 @@ void motor_off(void);
 
 /* Every mode switch is announced with one of these. Long enough for the ERM to
  * spin up and actually be felt, which the two short test bursts were not. */
-#define MOTOR_MODE_SWITCH_MS  100u
+#define MOTOR_MODE_SWITCH_MS 100u
 
 /* One-shot pulse: the motor runs for `ms` and motor_poll() ends it, with 0
  * meaning "off now". No clock is needed at the call site, so anything can start

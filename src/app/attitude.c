@@ -9,11 +9,10 @@
 
 #include <math.h>
 
-#define ATT_RAD2DEG           57.29577951308232f
-#define ATT_DEG2RAD           0.017453292519943295f
+#define ATT_RAD2DEG 57.29577951308232f
+#define ATT_DEG2RAD 0.017453292519943295f
 
-static float att_clampf(float v, float lo, float hi)
-{
+static float att_clampf(float v, float lo, float hi) {
     if (v < lo) {
         return lo;
     }
@@ -25,8 +24,7 @@ static float att_clampf(float v, float lo, float hi)
 
 /* Fold an angle into [-180,180] so a step across the wrap reads as the small
  * turn it really is instead of a ~360 degree jump. */
-static float att_wrap180(float deg)
-{
+static float att_wrap180(float deg) {
     while (deg > 180.0f) {
         deg -= 360.0f;
     }
@@ -38,9 +36,8 @@ static float att_wrap180(float deg)
 
 /* At rest the accelerometer points up (opposite gravity), so on its own it
  * fixes roll and pitch; yaw is unknowable and starts at 0. */
-static void att_seed_from_accel(attitude_t *a, float ax, float ay, float az)
-{
-    const float roll  = atan2f(ay, az);
+static void att_seed_from_accel(attitude_t *a, float ax, float ay, float az) {
+    const float roll = atan2f(ay, az);
     const float pitch = atan2f(-ax, sqrtf(ay * ay + az * az));
     const float cr = cosf(roll * 0.5f);
     const float sr = sinf(roll * 0.5f);
@@ -53,32 +50,28 @@ static void att_seed_from_accel(attitude_t *a, float ax, float ay, float az)
     a->q3 = -sr * sp;
 }
 
-static float att_raw_roll(const attitude_t *a)
-{
+static float att_raw_roll(const attitude_t *a) {
     return atan2f(2.0f * (a->q0 * a->q1 + a->q2 * a->q3),
-                  1.0f - 2.0f * (a->q1 * a->q1 + a->q2 * a->q2)) * ATT_RAD2DEG;
+                  1.0f - 2.0f * (a->q1 * a->q1 + a->q2 * a->q2)) *
+           ATT_RAD2DEG;
 }
 
-static float att_raw_pitch(const attitude_t *a)
-{
-    return asinf(att_clampf(2.0f * (a->q0 * a->q2 - a->q3 * a->q1), -1.0f, 1.0f))
-           * ATT_RAD2DEG;
+static float att_raw_pitch(const attitude_t *a) {
+    return asinf(att_clampf(2.0f * (a->q0 * a->q2 - a->q3 * a->q1), -1.0f, 1.0f)) * ATT_RAD2DEG;
 }
 
-static float att_raw_yaw(const attitude_t *a)
-{
+static float att_raw_yaw(const attitude_t *a) {
     return atan2f(2.0f * (a->q0 * a->q3 + a->q1 * a->q2),
-                  1.0f - 2.0f * (a->q2 * a->q2 + a->q3 * a->q3)) * ATT_RAD2DEG;
+                  1.0f - 2.0f * (a->q2 * a->q2 + a->q3 * a->q3)) *
+           ATT_RAD2DEG;
 }
 
-void attitude_init(attitude_t *a, const attitude_cfg_t *cfg)
-{
+void attitude_init(attitude_t *a, const attitude_cfg_t *cfg) {
     a->cfg = *cfg;
     attitude_reset(a);
 }
 
-void attitude_reset(attitude_t *a)
-{
+void attitude_reset(attitude_t *a) {
     a->q0 = 1.0f;
     a->q1 = 0.0f;
     a->q2 = 0.0f;
@@ -87,70 +80,65 @@ void attitude_reset(attitude_t *a)
     a->bias_y = 0.0f;
     a->bias_z = 0.0f;
 
-    a->zaru_count  = 0u;
-    a->zaru_sum_x  = 0.0f;
-    a->zaru_sum_y  = 0.0f;
-    a->zaru_sum_z  = 0.0f;
+    a->zaru_count = 0u;
+    a->zaru_sum_x = 0.0f;
+    a->zaru_sum_y = 0.0f;
+    a->zaru_sum_z = 0.0f;
     a->zaru_active = false;
 
-    a->calib_left    = 0u;
+    a->calib_left = 0u;
     a->calib_samples = 0u;
-    a->calib_count   = 0u;
+    a->calib_count = 0u;
     a->calib_gx = a->calib_gy = a->calib_gz = 0.0f;
     a->calib_ax = a->calib_ay = a->calib_az = 0.0f;
     a->ready = false;
 
     a->cont_ready = false;
-    a->last_roll  = 0.0f;
-    a->last_yaw   = 0.0f;
-    a->roll_cont  = 0.0f;
-    a->yaw_cont   = 0.0f;
+    a->last_roll = 0.0f;
+    a->last_yaw = 0.0f;
+    a->roll_cont = 0.0f;
+    a->yaw_cont = 0.0f;
 }
 
-void attitude_begin_calibration(attitude_t *a, uint8_t warmup, uint8_t samples)
-{
-    a->calib_left    = (uint8_t)(warmup + samples);
+void attitude_begin_calibration(attitude_t *a, uint8_t warmup, uint8_t samples) {
+    a->calib_left = (uint8_t)(warmup + samples);
     a->calib_samples = samples;
-    a->calib_count   = 0u;
+    a->calib_count = 0u;
     a->calib_gx = a->calib_gy = a->calib_gz = 0.0f;
     a->calib_ax = a->calib_ay = a->calib_az = 0.0f;
     a->ready = false;
 
-    a->zaru_count  = 0u;
-    a->zaru_sum_x  = 0.0f;
-    a->zaru_sum_y  = 0.0f;
-    a->zaru_sum_z  = 0.0f;
+    a->zaru_count = 0u;
+    a->zaru_sum_x = 0.0f;
+    a->zaru_sum_y = 0.0f;
+    a->zaru_sum_z = 0.0f;
     a->zaru_active = false;
 
     a->cont_ready = false;
 }
 
-bool attitude_ready(const attitude_t *a)
-{
+bool attitude_ready(const attitude_t *a) {
     return a->ready;
 }
 
 /* Zero-rate update: while the device is still the residual gyro reading is
  * bias, so fold it into the estimate; a confirmed-still sample is fed as zero
  * to the filter so residual bias cannot integrate into yaw. */
-static void att_zaru(attitude_t *a, float gx, float gy, float gz,
-                     float ax, float ay, float az, float dt,
-                     float *out_x, float *out_y, float *out_z)
-{
-    const float gyro_mag2  = gx * gx + gy * gy + gz * gz;
+static void att_zaru(attitude_t *a, float gx, float gy, float gz, float ax, float ay, float az,
+                     float dt, float *out_x, float *out_y, float *out_z) {
+    const float gyro_mag2 = gx * gx + gy * gy + gz * gz;
     const float accel_mag2 = ax * ax + ay * ay + az * az;
 
     const float zlo = 1.0f - a->cfg.zaru_accel_tol_g;
     const float zhi = 1.0f + a->cfg.zaru_accel_tol_g;
-    const bool still = (gyro_mag2 <= a->cfg.zaru_gyro_dps * a->cfg.zaru_gyro_dps)
-                    && (accel_mag2 >= zlo * zlo)
-                    && (accel_mag2 <= zhi * zhi);
+    const bool still = (gyro_mag2 <= a->cfg.zaru_gyro_dps * a->cfg.zaru_gyro_dps) &&
+                       (accel_mag2 >= zlo * zlo) && (accel_mag2 <= zhi * zhi);
 
     if (!still) {
-        a->zaru_count  = 0u;
-        a->zaru_sum_x  = 0.0f;
-        a->zaru_sum_y  = 0.0f;
-        a->zaru_sum_z  = 0.0f;
+        a->zaru_count = 0u;
+        a->zaru_sum_x = 0.0f;
+        a->zaru_sum_y = 0.0f;
+        a->zaru_sum_z = 0.0f;
         a->zaru_active = false;
         *out_x = gx;
         *out_y = gy;
@@ -192,9 +180,8 @@ static void att_zaru(attitude_t *a, float gx, float gy, float gz,
 /* One Mahony step: integrate the (bias-free) gyro into the quaternion, then
  * correct the tilt with the accelerometer, used as a direction and only while
  * its magnitude is near 1 g. */
-static void att_mahony(attitude_t *a, float gx, float gy, float gz,
-                       float ax, float ay, float az, float dt)
-{
+static void att_mahony(attitude_t *a, float gx, float gy, float gz, float ax, float ay, float az,
+                       float dt) {
     float wx = gx * ATT_DEG2RAD;
     float wy = gy * ATT_DEG2RAD;
     float wz = gz * ATT_DEG2RAD;
@@ -226,9 +213,9 @@ static void att_mahony(attitude_t *a, float gx, float gy, float gz,
     const float qc = a->q2;
 
     a->q0 += (-qb * wx - qc * wy - a->q3 * wz) * half_dt;
-    a->q1 += ( qa * wx + qc * wz - a->q3 * wy) * half_dt;
-    a->q2 += ( qa * wy - qb * wz + a->q3 * wx) * half_dt;
-    a->q3 += ( qa * wz + qb * wy - qc * wx) * half_dt;
+    a->q1 += (qa * wx + qc * wz - a->q3 * wy) * half_dt;
+    a->q2 += (qa * wy - qb * wz + a->q3 * wx) * half_dt;
+    a->q3 += (qa * wz + qb * wy - qc * wx) * half_dt;
 
     const float q2 = a->q0 * a->q0 + a->q1 * a->q1 + a->q2 * a->q2 + a->q3 * a->q3;
     if (q2 > 0.000001f) {
@@ -240,27 +227,25 @@ static void att_mahony(attitude_t *a, float gx, float gy, float gz,
     }
 }
 
-static void att_update_continuous(attitude_t *a)
-{
+static void att_update_continuous(attitude_t *a) {
     const float roll = att_raw_roll(a);
-    const float yaw  = att_raw_yaw(a);
+    const float yaw = att_raw_yaw(a);
 
     if (!a->cont_ready) {
-        a->roll_cont  = roll;
-        a->yaw_cont   = yaw;
+        a->roll_cont = roll;
+        a->yaw_cont = yaw;
         a->cont_ready = true;
     } else {
         a->roll_cont += att_wrap180(roll - a->last_roll);
-        a->yaw_cont  += att_wrap180(yaw - a->last_yaw);
+        a->yaw_cont += att_wrap180(yaw - a->last_yaw);
     }
 
     a->last_roll = roll;
-    a->last_yaw  = yaw;
+    a->last_yaw = yaw;
 }
 
-bool attitude_update(attitude_t *a, float gx, float gy, float gz,
-                     float ax, float ay, float az, float dt)
-{
+bool attitude_update(attitude_t *a, float gx, float gy, float gz, float ax, float ay, float az,
+                     float dt) {
     if (a->calib_left > 0u) {
         if (a->calib_left <= a->calib_samples) {
             a->calib_gx += gx;
@@ -288,30 +273,25 @@ bool attitude_update(attitude_t *a, float gx, float gy, float gz,
     float zgy;
     float zgz;
 
-    att_zaru(a, gx - a->bias_x, gy - a->bias_y, gz - a->bias_z,
-             ax, ay, az, dt, &zgx, &zgy, &zgz);
+    att_zaru(a, gx - a->bias_x, gy - a->bias_y, gz - a->bias_z, ax, ay, az, dt, &zgx, &zgy, &zgz);
     att_mahony(a, zgx, zgy, zgz, ax, ay, az, dt);
     att_update_continuous(a);
     return true;
 }
 
-float attitude_roll_deg(const attitude_t *a)
-{
+float attitude_roll_deg(const attitude_t *a) {
     return a->roll_cont;
 }
 
-float attitude_pitch_deg(const attitude_t *a)
-{
+float attitude_pitch_deg(const attitude_t *a) {
     return att_raw_pitch(a);
 }
 
-float attitude_yaw_deg(const attitude_t *a)
-{
+float attitude_yaw_deg(const attitude_t *a) {
     return a->yaw_cont;
 }
 
-void attitude_get_bias(const attitude_t *a, float *bx, float *by, float *bz)
-{
+void attitude_get_bias(const attitude_t *a, float *bx, float *by, float *bz) {
     *bx = a->bias_x;
     *by = a->bias_y;
     *bz = a->bias_z;

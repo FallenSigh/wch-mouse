@@ -12,9 +12,9 @@
 void bat_init(void);
 void bat_poll(uint32_t now_ms);
 
-bool     bat_power_good(void);
-bool     bat_charging(void);
-bool     bat_charge_fault(void);
+bool bat_power_good(void);
+bool bat_charging(void);
+bool bat_charge_fault(void);
 uint16_t bat_voltage_mv(void);
 uint16_t bat_voltage_raw(void);
 

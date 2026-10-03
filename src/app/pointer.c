@@ -9,24 +9,21 @@
 
 #include <math.h>
 
-#define POINTER_TWO_PI  6.283185307179586f
+#define POINTER_TWO_PI 6.283185307179586f
 
-static float pointer_euro_alpha(float cutoff_hz, float dt)
-{
+static float pointer_euro_alpha(float cutoff_hz, float dt) {
     const float tau = 1.0f / (POINTER_TWO_PI * cutoff_hz);
     return dt / (tau + dt);
 }
 
-static void pointer_euro_reset(pointer_euro_t *f, float value)
-{
+static void pointer_euro_reset(pointer_euro_t *f, float value) {
     f->initialized = true;
-    f->last_raw    = value;
-    f->filtered    = value;
-    f->deriv       = 0.0f;
+    f->last_raw = value;
+    f->filtered = value;
+    f->deriv = 0.0f;
 }
 
-static float pointer_euro(pointer_t *p, pointer_euro_t *f, float value, float dt)
-{
+static float pointer_euro(pointer_t *p, pointer_euro_t *f, float value, float dt) {
     if (!f->initialized) {
         pointer_euro_reset(f, value);
         return value;
@@ -44,87 +41,79 @@ static float pointer_euro(pointer_t *p, pointer_euro_t *f, float value, float dt
     return f->filtered;
 }
 
-static void pointer_freeze(pointer_t *p, float yaw_deg, float pitch_deg)
-{
-    p->frozen      = true;
-    p->settling    = false;
-    p->pend_x      = 0.0f;
-    p->pend_y      = 0.0f;
-    p->start_yaw   = yaw_deg;
+static void pointer_freeze(pointer_t *p, float yaw_deg, float pitch_deg) {
+    p->frozen = true;
+    p->settling = false;
+    p->pend_x = 0.0f;
+    p->pend_y = 0.0f;
+    p->start_yaw = yaw_deg;
     p->start_pitch = pitch_deg;
 }
 
-void pointer_init(pointer_t *p, const pointer_cfg_t *cfg)
-{
+void pointer_init(pointer_t *p, const pointer_cfg_t *cfg) {
     p->counts_x = cfg->counts_x;
     p->counts_y = cfg->counts_y;
-    p->swap     = cfg->swap;
+    p->swap = cfg->swap;
     p->invert_x = cfg->invert_x;
     p->invert_y = cfg->invert_y;
 
-    p->settle_ms              = cfg->settle_ms;
-    p->unlock_deg             = cfg->unlock_deg;
-    p->filter_min_cutoff_hz   = cfg->filter_min_cutoff_hz;
-    p->filter_beta            = cfg->filter_beta;
+    p->settle_ms = cfg->settle_ms;
+    p->unlock_deg = cfg->unlock_deg;
+    p->filter_min_cutoff_hz = cfg->filter_min_cutoff_hz;
+    p->filter_beta = cfg->filter_beta;
     p->filter_deriv_cutoff_hz = cfg->filter_deriv_cutoff_hz;
 
     pointer_reset(p);
 }
 
-void pointer_reset(pointer_t *p)
-{
+void pointer_reset(pointer_t *p) {
     p->neutral_pending = false;
-    p->neutral_yaw     = 0.0f;
-    p->neutral_pitch   = 0.0f;
+    p->neutral_yaw = 0.0f;
+    p->neutral_pitch = 0.0f;
 
     p->angle_ready = false;
-    p->last_fx     = 0.0f;
-    p->last_fy     = 0.0f;
-    p->pend_x      = 0.0f;
-    p->pend_y      = 0.0f;
+    p->last_fx = 0.0f;
+    p->last_fy = 0.0f;
+    p->pend_x = 0.0f;
+    p->pend_y = 0.0f;
 
     p->fx.initialized = false;
     p->fy.initialized = false;
 
-    p->now_ms       = 0u;
-    p->raw_prev     = 0u;
-    p->raw          = 0u;
-    p->frozen       = false;
-    p->settling     = false;
-    p->settle_at    = 0u;
-    p->start_yaw    = 0.0f;
-    p->start_pitch  = 0.0f;
-    p->clutch       = false;
-    p->mid_prev     = 0u;
+    p->now_ms = 0u;
+    p->raw_prev = 0u;
+    p->raw = 0u;
+    p->frozen = false;
+    p->settling = false;
+    p->settle_at = 0u;
+    p->start_yaw = 0.0f;
+    p->start_pitch = 0.0f;
+    p->clutch = false;
+    p->mid_prev = 0u;
 }
 
-void pointer_set_sensitivity(pointer_t *p, float counts_x, float counts_y)
-{
+void pointer_set_sensitivity(pointer_t *p, float counts_x, float counts_y) {
     p->counts_x = counts_x;
     p->counts_y = counts_y;
 }
 
-void pointer_rebase(pointer_t *p)
-{
+void pointer_rebase(pointer_t *p) {
     p->neutral_pending = true;
 }
 
-void pointer_update(pointer_t *p,
-                    float roll_deg, float yaw_deg, float pitch_deg,
-                    uint8_t raw_buttons, uint32_t now_ms, float dt,
-                    int16_t *dx, int16_t *dy)
-{
+void pointer_update(pointer_t *p, float roll_deg, float yaw_deg, float pitch_deg,
+                    uint8_t raw_buttons, uint32_t now_ms, float dt, int16_t *dx, int16_t *dy) {
     *dx = 0;
     *dy = 0;
     p->now_ms = now_ms;
 
     const uint8_t mouse_mask = (uint8_t)(POINTER_BTN_LEFT | POINTER_BTN_RIGHT);
-    const uint8_t mouse      = (uint8_t)(raw_buttons & mouse_mask);
+    const uint8_t mouse = (uint8_t)(raw_buttons & mouse_mask);
 
     if ((mouse != 0u) && ((p->raw_prev & mouse_mask) == 0u)) {
         pointer_freeze(p, yaw_deg, pitch_deg);
     } else if ((mouse == 0u) && ((p->raw_prev & mouse_mask) != 0u)) {
-        p->settling  = true;
+        p->settling = true;
         p->settle_at = now_ms + p->settle_ms;
     }
     p->raw_prev = mouse;
@@ -134,40 +123,38 @@ void pointer_update(pointer_t *p,
         p->clutch = true;
         pointer_freeze(p, yaw_deg, pitch_deg);
     } else if ((mid == 0u) && (p->mid_prev != 0u) && p->clutch) {
-        p->clutch          = false;
-        p->frozen          = false;
-        p->settling        = false;
+        p->clutch = false;
+        p->frozen = false;
+        p->settling = false;
         p->neutral_pending = true;
     }
     p->mid_prev = mid;
 
     if (p->frozen) {
         if (p->clutch) {
-            return;   /* clutch: frozen for as long as the middle button is held */
+            return; /* clutch: frozen for as long as the middle button is held */
         }
 
-        const bool  held   = (p->raw & mouse_mask) != 0u;
-        const float dyaw   = yaw_deg - p->start_yaw;
+        const bool held = (p->raw & mouse_mask) != 0u;
+        const float dyaw = yaw_deg - p->start_yaw;
         const float dpitch = pitch_deg - p->start_pitch;
 
-        if (held && ((dyaw * dyaw + dpitch * dpitch) >=
-                     (p->unlock_deg * p->unlock_deg))) {
-            p->frozen          = false;
-            p->settling        = false;
+        if (held && ((dyaw * dyaw + dpitch * dpitch) >= (p->unlock_deg * p->unlock_deg))) {
+            p->frozen = false;
+            p->settling = false;
             p->neutral_pending = true;
-        } else if (!held && p->settling &&
-                   ((int32_t)(now_ms - p->settle_at) >= 0)) {
-            p->frozen          = false;
-            p->settling        = false;
+        } else if (!held && p->settling && ((int32_t)(now_ms - p->settle_at) >= 0)) {
+            p->frozen = false;
+            p->settling = false;
             p->neutral_pending = true;
         } else {
-            return;   /* still guarded: emit no motion */
+            return; /* still guarded: emit no motion */
         }
     }
 
     if (p->neutral_pending) {
-        p->neutral_yaw     = yaw_deg;
-        p->neutral_pitch   = pitch_deg;
+        p->neutral_yaw = yaw_deg;
+        p->neutral_pitch = pitch_deg;
         p->neutral_pending = false;
         pointer_euro_reset(&p->fx, 0.0f);
         pointer_euro_reset(&p->fy, 0.0f);
@@ -193,8 +180,8 @@ void pointer_update(pointer_t *p,
     const float fy = pointer_euro(p, &p->fy, y, dt);
 
     if (!p->angle_ready) {
-        p->last_fx     = fx;
-        p->last_fy     = fy;
+        p->last_fx = fx;
+        p->last_fy = fy;
         p->angle_ready = true;
         return;
     }

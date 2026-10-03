@@ -14,7 +14,7 @@ extern const transport_t transport_ble;
 /* Priority order: s_backends[0] wins. USB is wired and always present, so it
  * outranks the radio backends added later. RF outranks BLE (lower latency) but
  * RF and BLE share the radio, so only one of them may be enabled. */
-static const transport_t * const s_backends[] = {
+static const transport_t *const s_backends[] = {
     &transport_usb,
 #ifdef WCH_RF_ENABLE
     &transport_rf,
@@ -28,8 +28,7 @@ static const transport_t * const s_backends[] = {
 
 static const transport_t *s_active;
 
-static void router_reselect(void)
-{
+static void router_reselect(void) {
     const transport_t *next = NULL;
 
     for (uint8_t i = 0; i < BACKEND_COUNT; i++) {
@@ -49,8 +48,7 @@ static void router_reselect(void)
     }
 }
 
-void transport_router_init(void)
-{
+void transport_router_init(void) {
     for (uint8_t i = 0; i < BACKEND_COUNT; i++) {
         if (s_backends[i]->init) {
             s_backends[i]->init();
@@ -61,8 +59,7 @@ void transport_router_init(void)
     router_reselect();
 }
 
-void transport_router_poll(uint32_t now_ms)
-{
+void transport_router_poll(uint32_t now_ms) {
     router_reselect();
 
     for (uint8_t i = 0; i < BACKEND_COUNT; i++) {
@@ -72,8 +69,7 @@ void transport_router_poll(uint32_t now_ms)
     }
 }
 
-bool transport_router_publish(const MouseReport_t *rpt)
-{
+bool transport_router_publish(const MouseReport_t *rpt) {
     if (s_active && s_active->send) {
         return s_active->send(rpt);
     }
@@ -81,7 +77,6 @@ bool transport_router_publish(const MouseReport_t *rpt)
     return false;
 }
 
-transport_id_t transport_router_active(void)
-{
+transport_id_t transport_router_active(void) {
     return s_active ? s_active->id : TR_OFFLINE;
 }

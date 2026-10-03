@@ -28,7 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define RGB_LED_COUNT       2
+#define RGB_LED_COUNT 2
 
 #ifdef __cplusplus
 extern "C" {

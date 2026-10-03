@@ -28,13 +28,13 @@ struct bmi2_dev;
  * paw3395_init() resets the driver defaults, so the caller's real geometry is
  * carried here and re-applied afterwards. */
 typedef struct {
-    struct paw3395_dev   *paw;    /* optical sensor (shutdown / re-init) */
-    struct bmi2_dev      *bmi;    /* IMU that supplies the gyro          */
-    uint16_t              cpi;    /* optical settings restored on exit   */
-    enum paw3395_mode     mode;
+    struct paw3395_dev *paw; /* optical sensor (shutdown / re-init) */
+    struct bmi2_dev *bmi;    /* IMU that supplies the gyro          */
+    uint16_t cpi;            /* optical settings restored on exit   */
+    enum paw3395_mode mode;
     enum paw3395_lift_cut lift;
-    uint8_t               sens_idx; /* pointer sensitivity preset       */
-    uint8_t               odr_idx;  /* IMU output-data-rate preset      */
+    uint8_t sens_idx; /* pointer sensitivity preset       */
+    uint8_t odr_idx;  /* IMU output-data-rate preset      */
 } air_mouse_cfg_t;
 
 void air_mouse_init(const air_mouse_cfg_t *cfg);

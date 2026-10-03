@@ -35,13 +35,13 @@
  * 8 kHz and can consume everything; BLE is limited by its connection interval
  * (7.5-10 ms), where an 8 kHz tick would only stop the core from ever idling.
  * 1 kHz is the floor: the millisecond clock is derived from the tick. */
-#define TICK_HZ_FAST  8000u
-#define TICK_HZ_SLOW  1000u
+#define TICK_HZ_FAST 8000u
+#define TICK_HZ_SLOW 1000u
 
-static volatile uint32_t s_tick;         /* s_tick_hz units */
-static volatile uint32_t s_tick_ms;      /* milliseconds    */
+static volatile uint32_t s_tick;    /* s_tick_hz units */
+static volatile uint32_t s_tick_ms; /* milliseconds    */
 static volatile uint32_t s_ticks_per_ms;
-static uint32_t          s_tick_hz;
+static uint32_t s_tick_hz;
 
 #ifdef WCH_DCDC_ENABLE
 /* Factory hardware-config word, read before PWR_DCDCCfg() so we can report
@@ -71,8 +71,7 @@ static uint32_t tick_ms(void) {
 
 /* Restart TIM3 at the current base rate. Needed after a standby cycle, where
  * the core clock and the timer both stopped. */
-static void tick_rearm(void)
-{
+static void tick_rearm(void) {
     TMR3_TimerInit(FREQ_SYS / s_tick_hz);
     TMR3_ITCfg(ENABLE, TMR0_3_IT_CYC_END);
     PFIC_EnableIRQ(TMR3_IRQn);
@@ -80,13 +79,12 @@ static void tick_rearm(void)
 
 /* s_tick is never reset, so the report cadence keeps its phase across a link
  * change instead of firing immediately on the new rate. */
-static void tick_set_rate(uint32_t hz)
-{
+static void tick_set_rate(uint32_t hz) {
     if (hz == s_tick_hz) {
         return;
     }
 
-    s_tick_hz      = hz;
+    s_tick_hz = hz;
     s_ticks_per_ms = hz / 1000u;
 
     tick_rearm();
@@ -144,9 +142,8 @@ int main() {
     isp_init();
 
 #ifdef WCH_DCDC_ENABLE
-    LOG_I("PWR", "dcdc hw0=0x%08X bit13=%u plan=0x%04X enabled=%u",
-          (unsigned)s_dcdc_hw[0], (unsigned)((s_dcdc_hw[0] >> 13) & 1u),
-          (unsigned)R16_POWER_PLAN,
+    LOG_I("PWR", "dcdc hw0=0x%08X bit13=%u plan=0x%04X enabled=%u", (unsigned)s_dcdc_hw[0],
+          (unsigned)((s_dcdc_hw[0] >> 13) & 1u), (unsigned)R16_POWER_PLAN,
           (unsigned)((R16_POWER_PLAN & RB_PWR_DCDC_EN) ? 1u : 0u));
 #endif
 
@@ -156,7 +153,7 @@ int main() {
     PFIC_EnableIRQ(TMR2_IRQn);
 
     /* Usart3 init */
-    UART3_Init( 1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY  );
+    UART3_Init(1, DEF_UARTx_BAUDRATE, DEF_UARTx_STOPBIT, DEF_UARTx_PARITY);
 
     /* UART3 receives the BIO module's real-time packets. Receive stays enabled
      * even without a host because bio_rt_feed() parses them locally for the
@@ -232,19 +229,19 @@ int main() {
      * settings_apply() just programmed rather than the built-in defaults -
      * otherwise leaving the mode would clobber the user's CPI/mode/lift. */
     const air_mouse_cfg_t air_cfg = {
-        .paw  = &paw,
-        .bmi  = &bmi,
-        .cpi  = settings_cpi(),
+        .paw = &paw,
+        .bmi = &bmi,
+        .cpi = settings_cpi(),
         .mode = (enum paw3395_mode)settings_mode(),
         .lift = (enum paw3395_lift_cut)settings_lift(),
         .sens_idx = settings_air_sens_idx(),
-        .odr_idx  = settings_air_odr_idx(),
+        .odr_idx = settings_air_odr_idx(),
     };
     air_mouse_init(&air_cfg);
 
     LOG_I("MAIN", "init done");
 
-    while(1) {
+    while (1) {
 #if defined(WCH_BLE_ENABLE) || defined(WCH_RF_ENABLE)
         /* TMOS tick is 625 us and MUST be pumped from main-loop context;
          * calling it from an ISR corrupts the scheduler. */
@@ -258,8 +255,8 @@ int main() {
             UART3_DataRx_Deal();
             UART3_DataTx_Deal();
         } else {
-            CDC.Uart_RecLen     = 0;
-            CDC.Uart_Input_Ptr  = 0;
+            CDC.Uart_RecLen = 0;
+            CDC.Uart_Input_Ptr = 0;
             CDC.Uart_Output_Ptr = 0;
         }
 
@@ -272,8 +269,8 @@ int main() {
 
         {
             static uint32_t last_report_tick;
-            uint32_t        rate;
-            uint32_t        div;
+            uint32_t rate;
+            uint32_t div;
 
             /* Each link keeps its own persisted rate: the unsuffixed pair is the
              * USB one, RF and BLE have their own. */
@@ -325,7 +322,7 @@ int main() {
          * the last valid reading instead of a "no contact" packet. */
         {
             static uint32_t last_rt_seq;
-            const uint32_t  rt_seq = bio_rt_seq();
+            const uint32_t rt_seq = bio_rt_seq();
 
             if (rt_seq != last_rt_seq) {
                 bio_rt_pack_t pkt;

@@ -46,24 +46,21 @@
  * the tick timers and the radio are all clocked from here. */
 #define POWER_CLK_OFF_MASK ((uint16_t)(0xFFFFu & (uint32_t)~RB_SLP_CLK_UART1))
 
-static bool                s_inited;
-static uint32_t            s_idle_from_ms;
-static bool                s_tethered;
+static bool s_inited;
+static uint32_t s_idle_from_ms;
+static bool s_tethered;
 
-void power_init(void)
-{
-    s_inited       = true;
+void power_init(void) {
+    s_inited = true;
     s_idle_from_ms = 0u;
 }
 
-void power_note_activity(uint32_t now_ms)
-{
+void power_note_activity(uint32_t now_ms) {
     s_idle_from_ms = now_ms;
 }
 
 /* Everything that has to stop before the flash and the core clock go down. */
-static void standby_park(void)
-{
+static void standby_park(void) {
     /* The motion ISR runs with the flash still powered down, so it must not use
      * the SPI bus until the wake path has restored the clock. */
     paw3395_motion_park();
@@ -90,8 +87,7 @@ static void standby_park(void)
 /* PA7 is already an armed falling-edge interrupt; the button pins are armed
  * here. GPIO wake turns either into a sleep wake-up. BAT is the charger/cable
  * escape hatch. */
-static void standby_wake_cfg(void)
-{
+static void standby_wake_cfg(void) {
     mouse_wake_arm();
     PWR_PeriphWakeUpCfg(ENABLE, RB_SLP_GPIO_WAKE, Long_Delay);
     PWR_PeriphWakeUpCfg(ENABLE, RB_SLP_BAT_WAKE, Long_Delay);
@@ -100,10 +96,9 @@ static void standby_wake_cfg(void)
 /* Runs from RAM: LowPower_Sleep() powers the flash down and switches the system
  * clock, so nothing on this path may execute from flash once it is entered. */
 __HIGH_CODE
-static void standby_sleep(void)
-{
+static void standby_sleep(void) {
     uint32_t irq_status;
-    uint8_t  wake_ctrl;
+    uint8_t wake_ctrl;
     volatile uint32_t spin;
 
     SYS_DisableAllIrq(&irq_status);
@@ -143,8 +138,7 @@ static void standby_sleep(void)
     SYS_RecoverIrq(irq_status);
 }
 
-static void standby_restore(void)
-{
+static void standby_restore(void) {
     /* Un-gate the peripheral clocks before anything touches a peripheral: the
      * radio and the sensor's SPI0 both hang off this mask. */
     PWR_PeriphClkCfg(ENABLE, POWER_CLK_OFF_MASK);
@@ -168,8 +162,7 @@ static void standby_restore(void)
     mouse_wake_disarm();
 }
 
-bool power_poll(uint32_t now_ms)
-{
+bool power_poll(uint32_t now_ms) {
     if (!s_inited) {
         return false;
     }

@@ -20,7 +20,7 @@
  *   rest    0
  * The reply's payload starts with a status byte. */
 
-#define PROTO_FRAME_LEN  63u
+#define PROTO_FRAME_LEN 63u
 
 /* Prepare the channel (the configuration lives in settings.c). */
 void proto_init(void);
@@ -35,6 +35,6 @@ void proto_handle_get(uint8_t *frame, uint16_t len);
  * own (the RF link). `proto_response_gen()` changes with every reply, so the
  * caller can tell a fresh one from the one it already sent. */
 const uint8_t *proto_response(void);
-uint8_t        proto_response_gen(void);
+uint8_t proto_response_gen(void);
 
 #endif /* __PROTO_H__ */

@@ -15,17 +15,17 @@
  *   air_mouse     - true while the gyro owns the cursor */
 /* User configuration: what the underglow shows when no transient state is
  * active. Defaults match the old behaviour: enabled, idle hue at brightness 1. */
-#define RGB_FX_EFFECT_HUE    0u   /* idle hue cycle   */
-#define RGB_FX_EFFECT_SOLID  1u   /* one fixed colour */
+#define RGB_FX_EFFECT_HUE   0u /* idle hue cycle   */
+#define RGB_FX_EFFECT_SOLID 1u /* one fixed colour */
 
 typedef struct {
-    bool     enable;      /* false cuts the LED rail                */
-    bool     transient;   /* false suppresses the mode-switch flash */
-    uint8_t  effect;      /* RGB_FX_EFFECT_*                        */
-    uint8_t  brightness;  /* 1..255                               */
-    uint8_t  r;
-    uint8_t  g;
-    uint8_t  b;           /* colour used by RGB_FX_EFFECT_SOLID   */
+    bool enable;        /* false cuts the LED rail                */
+    bool transient;     /* false suppresses the mode-switch flash */
+    uint8_t effect;     /* RGB_FX_EFFECT_*                        */
+    uint8_t brightness; /* 1..255                               */
+    uint8_t r;
+    uint8_t g;
+    uint8_t b; /* colour used by RGB_FX_EFFECT_SOLID   */
 } rgb_fx_cfg_t;
 
 void rgb_fx_set_config(const rgb_fx_cfg_t *cfg);

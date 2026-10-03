@@ -17,8 +17,7 @@
 #include "CH58x_common.h"
 #include "board.h"
 
-void motor_init(void)
-{
+void motor_init(void) {
     /* Latch low first so configuring the pin as an output cannot glitch the
      * motor on. */
     GPIOB_ResetBits(BOARD_MOTOR_PIN);
@@ -27,41 +26,36 @@ void motor_init(void)
 
 /* Counted down rather than compared against a deadline, so starting a pulse
  * needs no clock: the config channel runs in an ISR and could not supply one. */
-static uint32_t s_left_ms;   /* 0 while idle */
-static uint32_t s_last_ms;   /* poll time of the last decrement */
-static bool     s_running;
-static bool     s_enabled = true;
+static uint32_t s_left_ms; /* 0 while idle */
+static uint32_t s_last_ms; /* poll time of the last decrement */
+static bool s_running;
+static bool s_enabled = true;
 
-void motor_set_enable(bool on)
-{
+void motor_set_enable(bool on) {
     s_enabled = on;
     if (!on) {
         motor_off();
     }
 }
 
-bool motor_enabled(void)
-{
+bool motor_enabled(void) {
     return s_enabled;
 }
 
-void motor_on(void)
-{
+void motor_on(void) {
     if (!s_enabled) {
         return;
     }
     GPIOB_SetBits(BOARD_MOTOR_PIN);
 }
 
-void motor_off(void)
-{
-    s_running  = false;
-    s_left_ms  = 0u;
+void motor_off(void) {
+    s_running = false;
+    s_left_ms = 0u;
     GPIOB_ResetBits(BOARD_MOTOR_PIN);
 }
 
-void motor_pulse(uint32_t ms)
-{
+void motor_pulse(uint32_t ms) {
     if (!s_enabled || ms == 0u) {
         motor_off();
         return;
@@ -70,11 +64,10 @@ void motor_pulse(uint32_t ms)
     motor_on();
     s_running = true;
     s_left_ms = ms;
-    s_last_ms = 0u;   /* the next poll latches the clock */
+    s_last_ms = 0u; /* the next poll latches the clock */
 }
 
-void motor_poll(uint32_t now_ms)
-{
+void motor_poll(uint32_t now_ms) {
     uint32_t elapsed;
 
     if (!s_running) {
@@ -86,7 +79,7 @@ void motor_poll(uint32_t now_ms)
         return;
     }
 
-    elapsed   = now_ms - s_last_ms;
+    elapsed = now_ms - s_last_ms;
     s_last_ms = now_ms;
 
     if (elapsed >= s_left_ms) {
@@ -97,7 +90,6 @@ void motor_poll(uint32_t now_ms)
     s_left_ms -= elapsed;
 }
 
-bool motor_active(void)
-{
+bool motor_active(void) {
     return s_running;
 }

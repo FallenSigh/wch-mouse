@@ -18,49 +18,48 @@
 #include "log.h"
 #include "wchrf.h"
 
-#define HID_EP  DEF_UEP4
+#define HID_EP DEF_UEP4
 
 /* The vendor Feature report frame, and how many replies go out carrying a
  * captured one: the 63-byte frame takes 4 pieces, so 400 replies is ~100 passes
  * at 1 kHz - well under a tenth of a second, and the mouse only has to get one
  * pass through intact. */
-#define RF_CMD_MAX     63u
-#define RF_CMD_REPEAT  400u
+#define RF_CMD_MAX    63u
+#define RF_CMD_REPEAT 400u
 
-static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN];   /* RF DMA target */
-static RfPacket_t s_mail;       /* last complete packet, consumed by the poll */
-static RfAck_t    s_ack;        /* what we DMA back to the mouse */
-static rfipRx_t   s_rx_param;
-static rfipTx_t   s_tx_param;
+static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN]; /* RF DMA target */
+static RfPacket_t s_mail; /* last complete packet, consumed by the poll */
+static RfAck_t s_ack;     /* what we DMA back to the mouse */
+static rfipRx_t s_rx_param;
+static rfipTx_t s_tx_param;
 
 static volatile bool s_rx_ready;
-static uint32_t      s_rx_n;
+static uint32_t s_rx_n;
 
-static uint8_t  s_cmd[RF_CMD_MAX];   /* the host's last SET frame */
-static uint16_t s_cmd_len;           /* 0 when there is nothing to carry */
-static uint16_t s_cmd_off;           /* next piece to hand out */
-static uint16_t s_cmd_left;          /* replies still carrying it */
-static uint8_t  s_cmd_id;            /* the mouse dedups repeats on this */
-static volatile uint16_t s_cmd_trace; /* nonzero once a fresh frame arrived */
+static uint8_t s_cmd[RF_CMD_MAX];       /* the host's last SET frame */
+static uint16_t s_cmd_len;              /* 0 when there is nothing to carry */
+static uint16_t s_cmd_off;              /* next piece to hand out */
+static uint16_t s_cmd_left;             /* replies still carrying it */
+static uint8_t s_cmd_id;                /* the mouse dedups repeats on this */
+static volatile uint16_t s_cmd_trace;   /* nonzero once a fresh frame arrived */
 static volatile uint16_t s_cmd_prev_ok; /* the answer held when it did */
 
-static uint8_t  s_reply[RF_CMD_MAX];      /* assembly for the current pass */
-static uint8_t  s_reply_ok[RF_CMD_MAX];   /* the last whole answer: what a read-back serves */
-static uint16_t s_reply_ok_len;           /* its length; 0 = nothing to serve */
-static uint16_t s_reply_len;         /* pieces collected so far */
-static uint16_t s_reply_total;       /* 0 until its header is in */
-static uint8_t  s_reply_id;          /* the generation being collected */
-static uint8_t  s_reply_ignore;      /* the generation the last command ruled out */
-static uint8_t  s_reply_done;        /* the current answer is whole */
-static uint32_t s_reply_chunks;      /* pieces taken for it */
-static uint32_t s_reply_restarts;    /* passes that ended torn */
+static uint8_t s_reply[RF_CMD_MAX];    /* assembly for the current pass */
+static uint8_t s_reply_ok[RF_CMD_MAX]; /* the last whole answer: what a read-back serves */
+static uint16_t s_reply_ok_len;        /* its length; 0 = nothing to serve */
+static uint16_t s_reply_len;           /* pieces collected so far */
+static uint16_t s_reply_total;         /* 0 until its header is in */
+static uint8_t s_reply_id;             /* the generation being collected */
+static uint8_t s_reply_ignore;         /* the generation the last command ruled out */
+static uint8_t s_reply_done;           /* the current answer is whole */
+static uint32_t s_reply_chunks;        /* pieces taken for it */
+static uint32_t s_reply_restarts;      /* passes that ended torn */
 
 void proto_handle_set(const uint8_t *frame, uint16_t len);
 void proto_handle_get(uint8_t *frame, uint16_t len);
 
 /* Re-arm the receiver; each packet is one poll, so this has to be prompt. */
-static void rf_rx_start(void)
-{
+static void rf_rx_start(void) {
     RFIP_SetRx(&s_rx_param);
 }
 
@@ -68,8 +67,7 @@ static void rf_rx_start(void)
  * dongle has no protocol module of its own, so it only captures the frame for
  * the RF side - the mouse is what runs it. Called from the USB ISR, so the copy
  * is the whole body. */
-void proto_handle_set(const uint8_t *frame, uint16_t len)
-{
+void proto_handle_set(const uint8_t *frame, uint16_t len) {
     if ((frame == NULL) || (len == 0u)) {
         return;
     }
@@ -78,10 +76,10 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
     memcpy(s_cmd, frame, s_cmd_len);
 
     if (++s_cmd_id == 0u) {
-        s_cmd_id = 1u;   /* 0 means "nothing pending" on the wire */
+        s_cmd_id = 1u; /* 0 means "nothing pending" on the wire */
     }
 
-    s_cmd_off  = 0u;
+    s_cmd_off = 0u;
     s_cmd_left = RF_CMD_REPEAT;
     s_cmd_trace = s_cmd_len;
 
@@ -90,33 +88,32 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
      * it that are still in flight: GET_FEATURE then serves zeros until the
      * mouse's own answer has streamed in, which the host tells apart from a
      * real reply and waits out. */
-    s_cmd_prev_ok  = s_reply_ok_len;   /* 0 means it never arrived at all */
+    s_cmd_prev_ok = s_reply_ok_len; /* 0 means it never arrived at all */
     s_reply_ignore = s_reply_id;
-    s_reply_id     = 0u;
-    s_reply_len    = 0u;
-    s_reply_total  = 0u;
+    s_reply_id = 0u;
+    s_reply_len = 0u;
+    s_reply_total = 0u;
     s_reply_ok_len = 0u;
-    s_reply_done   = false;
+    s_reply_done = false;
 }
 
 /* Collect the mouse's answer out of the uplink frames it streams. A new
  * resp_id is the marker to start over, so a torn collection is discarded
  * rather than served. */
-static void rf_reply_feed(const RfPacket_t *pkt)
-{
+static void rf_reply_feed(const RfPacket_t *pkt) {
     uint16_t off;
     uint16_t n;
 
     if ((pkt->resp_id == 0u) || (pkt->resp_id == s_reply_ignore)) {
-        return;                      /* idle, or an answer already ruled out */
+        return; /* idle, or an answer already ruled out */
     }
 
     if (pkt->resp_id != s_reply_id) {
-        s_reply_id       = pkt->resp_id;
-        s_reply_len      = 0u;
-        s_reply_total    = 0u;
-        s_reply_done     = false;
-        s_reply_chunks   = 0u;
+        s_reply_id = pkt->resp_id;
+        s_reply_len = 0u;
+        s_reply_total = 0u;
+        s_reply_done = false;
+        s_reply_chunks = 0u;
         s_reply_restarts = 0u;
     }
 
@@ -127,13 +124,13 @@ static void rf_reply_feed(const RfPacket_t *pkt)
         if (s_reply_len != 0u) {
             s_reply_restarts++;
         }
-        s_reply_len   = 0u;
+        s_reply_len = 0u;
         s_reply_total = 0u;
     }
 
     off = (uint16_t)pkt->chunk * RF_REPLY_CHUNK;
     if (off != s_reply_len) {
-        return;                      /* a piece we are not waiting for */
+        return; /* a piece we are not waiting for */
     }
 
     n = (uint16_t)(RF_CMD_MAX - s_reply_len);
@@ -155,7 +152,7 @@ static void rf_reply_feed(const RfPacket_t *pkt)
      * so without the snapshot a read-back would only ever catch it in the gap
      * between two passes. A nonzero restart count is the link tearing a pass up. */
     if (!s_reply_done && (s_reply_total != 0u) && (s_reply_len >= s_reply_total)) {
-        s_reply_done   = true;
+        s_reply_done = true;
         s_reply_ok_len = s_reply_total;
         memcpy(s_reply_ok, s_reply, s_reply_total);
         LOG_I("RF", "reply id=%u chunks=%u restarts=%u", (unsigned)s_reply_id,
@@ -165,8 +162,7 @@ static void rf_reply_feed(const RfPacket_t *pkt)
 
 /* GET_FEATURE on the host side. Zeros until a whole answer has arrived: the
  * caller's checksum then rejects it instead of passing off a torn frame. */
-void proto_handle_get(uint8_t *frame, uint16_t len)
-{
+void proto_handle_get(uint8_t *frame, uint16_t len) {
     if ((frame == NULL) || (len == 0u)) {
         return;
     }
@@ -181,13 +177,12 @@ void proto_handle_get(uint8_t *frame, uint16_t len)
 
 /* Rotate the pending frame through the replies. Chunk 0 restarts the mouse's
  * assembly, so handing the whole frame out again is the retry. */
-static void rf_ack_fill_cmd(void)
-{
+static void rf_ack_fill_cmd(void) {
     uint16_t n;
 
     if ((s_cmd_len == 0u) || (s_cmd_left == 0u)) {
-        s_ack.cmd_id  = 0u;
-        s_ack.chunk   = 0u;
+        s_ack.cmd_id = 0u;
+        s_ack.chunk = 0u;
         s_ack.cmd_len = 0u;
         return;
     }
@@ -201,8 +196,8 @@ static void rf_ack_fill_cmd(void)
         n = RF_CMD_CHUNK;
     }
 
-    s_ack.cmd_id  = s_cmd_id;
-    s_ack.chunk   = (uint8_t)(s_cmd_off / RF_CMD_CHUNK);
+    s_ack.cmd_id = s_cmd_id;
+    s_ack.chunk = (uint8_t)(s_cmd_off / RF_CMD_CHUNK);
     s_ack.cmd_len = (uint8_t)s_cmd_len;
 
     memset(s_ack.payload, 0, sizeof(s_ack.payload));
@@ -212,22 +207,21 @@ static void rf_ack_fill_cmd(void)
     s_cmd_left--;
 }
 
-static void rf_process_cb(rfRole_States_t sta, uint8_t id)
-{
+static void rf_process_cb(rfRole_States_t sta, uint8_t id) {
     (void)id;
 
     if (sta & RF_STATE_RX) {
         const RfPacket_t *pkt = (const RfPacket_t *)s_rx;
 
-        s_mail     = *pkt;
+        s_mail = *pkt;
         s_rx_ready = true;
         s_rx_n++;
 
         /* Answer straight away: the mouse is waiting for this inside the same
          * period it sent in, so the reply goes out from the callback and the
          * receiver is only re-armed once it has left. */
-        s_ack.type     = RF_ACK_TYPE;
-        s_ack.length   = RF_ACK_LEN;
+        s_ack.type = RF_ACK_TYPE;
+        s_ack.length = RF_ACK_LEN;
         s_ack.rx_count = (uint16_t)s_rx_n;
         rf_ack_fill_cmd();
 
@@ -239,58 +233,54 @@ static void rf_process_cb(rfRole_States_t sta, uint8_t id)
     }
 }
 
-void rf_dongle_init(void)
-{
+void rf_dongle_init(void) {
     rfRoleConfig_t conf = {
-        .TxPower     = LL_TX_POWEER_4_DBM,
+        .TxPower = LL_TX_POWEER_4_DBM,
         .rfProcessCB = rf_process_cb,
-        .processMask = RF_STATE_RX | RF_STATE_RX_CRCERR | RF_STATE_TX_FINISH
-                     | RF_STATE_TIMEOUT,
+        .processMask = RF_STATE_RX | RF_STATE_RX_CRCERR | RF_STATE_TX_FINISH | RF_STATE_TIMEOUT,
     };
 
     RFRole_SwitchMode(RFIP_MODE_RF_BASIC);
     RFRole_BasicInit(&conf);
 
-    rfRoleParam_t parm = { 0 };
+    rfRoleParam_t parm = {0};
 
     parm.accessAddress = RF_ACCESS_ADDRESS;
-    parm.crcInit       = RF_CRC_INIT;
-    parm.properties    = LLE_MODE_PHY_2M;
-    parm.sendInterval  = 1999 * 2;
-    parm.sendTime      = 20 * 2;
+    parm.crcInit = RF_CRC_INIT;
+    parm.properties = LLE_MODE_PHY_2M;
+    parm.sendInterval = 1999 * 2;
+    parm.sendTime = 20 * 2;
     RFRole_SetParam(&parm);
 
     s_rx_param.accessAddress = RF_ACCESS_ADDRESS;
-    s_rx_param.crcInit       = RF_CRC_INIT;
-    s_rx_param.frequency     = RF_CHANNEL;
-    s_rx_param.properties    = LLE_MODE_PHY_2M;
-    s_rx_param.rxDMA         = (uint32_t)&s_rx;
-    s_rx_param.rxMaxLen      = RF_RX_MAX_LEN;
-    s_rx_param.timeOut       = 0;
+    s_rx_param.crcInit = RF_CRC_INIT;
+    s_rx_param.frequency = RF_CHANNEL;
+    s_rx_param.properties = LLE_MODE_PHY_2M;
+    s_rx_param.rxDMA = (uint32_t)&s_rx;
+    s_rx_param.rxMaxLen = RF_RX_MAX_LEN;
+    s_rx_param.timeOut = 0;
 
     s_tx_param.accessAddress = RF_ACCESS_ADDRESS;
-    s_tx_param.crcInit       = RF_CRC_INIT;
-    s_tx_param.frequency     = RF_CHANNEL;
-    s_tx_param.properties    = LLE_MODE_PHY_2M;
-    s_tx_param.sendCount     = 1;
-    s_tx_param.txDMA         = (uint32_t)&s_ack;
+    s_tx_param.crcInit = RF_CRC_INIT;
+    s_tx_param.frequency = RF_CHANNEL;
+    s_tx_param.properties = LLE_MODE_PHY_2M;
+    s_tx_param.sendCount = 1;
+    s_tx_param.txDMA = (uint32_t)&s_ack;
 
     PFIC_EnableIRQ(BLEB_IRQn);
     PFIC_EnableIRQ(BLEL_IRQn);
 
     rf_rx_start();
-    LOG_I("RF", "dongle rx up addr=%08X ch=%u", (unsigned)RF_ACCESS_ADDRESS,
-          (unsigned)RF_CHANNEL);
+    LOG_I("RF", "dongle rx up addr=%08X ch=%u", (unsigned)RF_ACCESS_ADDRESS, (unsigned)RF_CHANNEL);
 }
 
-void rf_dongle_poll(void)
-{
+void rf_dongle_poll(void) {
     if (s_cmd_trace != 0u) {
         /* prev is the answer held when this command arrived: 0 there means the
          * previous one never made it back, which is the failure to chase. */
         LOG_I("RF", "host cmd %u bytes, prev reply %u", (unsigned)s_cmd_trace,
               (unsigned)s_cmd_prev_ok);
-        s_cmd_trace   = 0u;
+        s_cmd_trace = 0u;
         s_cmd_prev_ok = 0u;
     }
 

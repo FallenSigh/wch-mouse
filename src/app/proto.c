@@ -18,56 +18,55 @@
 #include "radio_mode.h"
 #include "settings.h"
 
-#define PROTO_SUM_OFF(len)  ((uint16_t)(3u + (len)))
+#define PROTO_SUM_OFF(len) ((uint16_t)(3u + (len)))
 
 /* Command codes; bit 7 marks the reply. */
-#define PROTO_CMD_GET_VERSION   0x01u
-#define PROTO_CMD_GET_INFO      0x02u
-#define PROTO_CMD_GET_RADIO     0x03u
-#define PROTO_CMD_GET_DPI       0x10u
-#define PROTO_CMD_SET_DPI       0x11u
-#define PROTO_CMD_GET_SENSOR    0x12u
-#define PROTO_CMD_SET_SENSOR    0x13u
-#define PROTO_CMD_GET_LIFT      0x14u
-#define PROTO_CMD_SET_LIFT      0x15u
-#define PROTO_CMD_GET_AIR_SENS  0x16u
-#define PROTO_CMD_SET_AIR_SENS  0x17u
-#define PROTO_CMD_GET_AIR_ODR   0x18u
-#define PROTO_CMD_SET_AIR_ODR   0x19u
-#define PROTO_CMD_GET_RGB       0x30u
-#define PROTO_CMD_SET_RGB       0x31u
-#define PROTO_CMD_GET_OLED    0x40u
-#define PROTO_CMD_SET_OLED    0x41u
-#define PROTO_CMD_GET_RATE    0x42u
-#define PROTO_CMD_SET_RATE    0x43u
-#define PROTO_CMD_GET_BATTERY 0x24u
-#define PROTO_CMD_GET_PERIPH  0x60u
-#define PROTO_CMD_SET_PERIPH  0x61u
-#define PROTO_CMD_GET_MOTOR   0x62u
-#define PROTO_CMD_SET_MOTOR   0x63u
+#define PROTO_CMD_GET_VERSION  0x01u
+#define PROTO_CMD_GET_INFO     0x02u
+#define PROTO_CMD_GET_RADIO    0x03u
+#define PROTO_CMD_GET_DPI      0x10u
+#define PROTO_CMD_SET_DPI      0x11u
+#define PROTO_CMD_GET_SENSOR   0x12u
+#define PROTO_CMD_SET_SENSOR   0x13u
+#define PROTO_CMD_GET_LIFT     0x14u
+#define PROTO_CMD_SET_LIFT     0x15u
+#define PROTO_CMD_GET_AIR_SENS 0x16u
+#define PROTO_CMD_SET_AIR_SENS 0x17u
+#define PROTO_CMD_GET_AIR_ODR  0x18u
+#define PROTO_CMD_SET_AIR_ODR  0x19u
+#define PROTO_CMD_GET_RGB      0x30u
+#define PROTO_CMD_SET_RGB      0x31u
+#define PROTO_CMD_GET_OLED     0x40u
+#define PROTO_CMD_SET_OLED     0x41u
+#define PROTO_CMD_GET_RATE     0x42u
+#define PROTO_CMD_SET_RATE     0x43u
+#define PROTO_CMD_GET_BATTERY  0x24u
+#define PROTO_CMD_GET_PERIPH   0x60u
+#define PROTO_CMD_SET_PERIPH   0x61u
+#define PROTO_CMD_GET_MOTOR    0x62u
+#define PROTO_CMD_SET_MOTOR    0x63u
 #define PROTO_CMD_GET_MOTOR_EN 0x64u
 #define PROTO_CMD_SET_MOTOR_EN 0x65u
 
 /* Longest single buzz the host can ask for. A stuck-on ERM is 85 mA and gets
  * hot, so the request is capped rather than trusted. */
-#define PROTO_MOTOR_MAX_MS    30000u
-#define PROTO_CMD_BIO_ACQ       0x50u
-#define PROTO_CMD_BIO_SLEEP     0x51u
+#define PROTO_MOTOR_MAX_MS  30000u
+#define PROTO_CMD_BIO_ACQ   0x50u
+#define PROTO_CMD_BIO_SLEEP 0x51u
 
 /* Status byte (first payload byte of every reply). */
-#define PROTO_ST_OK           0x00u
-#define PROTO_ST_UNKNOWN      0x01u
-#define PROTO_ST_BADLEN       0x02u
-#define PROTO_ST_BADSUM       0x03u
-#define PROTO_ST_UNSUPPORTED  0x04u
+#define PROTO_ST_OK          0x00u
+#define PROTO_ST_UNKNOWN     0x01u
+#define PROTO_ST_BADLEN      0x02u
+#define PROTO_ST_BADSUM      0x03u
+#define PROTO_ST_UNSUPPORTED 0x04u
 
-#define PROTO_VERSION         1u
+#define PROTO_VERSION 1u
 
 static uint8_t s_resp[PROTO_FRAME_LEN];
 static uint8_t s_resp_gen;
 
-static uint8_t proto_sum(const uint8_t *p, uint16_t n)
-{
+static uint8_t proto_sum(const uint8_t *p, uint16_t n) {
     uint8_t sum = 0u;
 
     for (uint16_t i = 0u; i < n; i++) {
@@ -78,8 +77,7 @@ static uint8_t proto_sum(const uint8_t *p, uint16_t n)
 }
 
 /* Build a reply: cmd|0x80, echo seq, payload = status + data. */
-static void proto_reply(uint8_t cmd, uint8_t seq, uint8_t status, const uint8_t *data, uint8_t n)
-{
+static void proto_reply(uint8_t cmd, uint8_t seq, uint8_t status, const uint8_t *data, uint8_t n) {
     const uint8_t plen = (uint8_t)(n + 1u);
 
     memset(s_resp, 0, sizeof(s_resp));
@@ -95,37 +93,33 @@ static void proto_reply(uint8_t cmd, uint8_t seq, uint8_t status, const uint8_t 
     s_resp[PROTO_SUM_OFF(plen)] = proto_sum(s_resp, PROTO_SUM_OFF(plen));
 
     if (++s_resp_gen == 0u) {
-        s_resp_gen = 1u;   /* 0 means "nothing to carry" on the RF uplink */
+        s_resp_gen = 1u; /* 0 means "nothing to carry" on the RF uplink */
     }
 }
 
-const uint8_t *proto_response(void)
-{
+const uint8_t *proto_response(void) {
     return s_resp;
 }
 
-uint8_t proto_response_gen(void)
-{
+uint8_t proto_response_gen(void) {
     return s_resp_gen;
 }
 
-void proto_init(void)
-{
+void proto_init(void) {
     proto_reply(PROTO_CMD_GET_VERSION, 0u, PROTO_ST_OK, NULL, 0u);
 }
 
-void proto_handle_set(const uint8_t *frame, uint16_t len)
-{
-    uint8_t  cmd;
-    uint8_t  seq;
-    uint8_t  plen;
+void proto_handle_set(const uint8_t *frame, uint16_t len) {
+    uint8_t cmd;
+    uint8_t seq;
+    uint8_t plen;
 
     if ((frame == NULL) || (len < 4u)) {
         return;
     }
 
-    cmd  = frame[0];
-    seq  = frame[1];
+    cmd = frame[0];
+    seq = frame[1];
     plen = frame[2];
 
     if (PROTO_SUM_OFF(plen) > len) {
@@ -139,353 +133,354 @@ void proto_handle_set(const uint8_t *frame, uint16_t len)
     }
 
     switch (cmd) {
-        case PROTO_CMD_GET_VERSION: {
-            const uint8_t data[4] = { PROTO_VERSION, 1u, 0u, 0u };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+    case PROTO_CMD_GET_VERSION: {
+        const uint8_t data[4] = {PROTO_VERSION, 1u, 0u, 0u};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_INFO: {
+        /* bit0 sensor, bit1 radio, bit2 battery, bit3 BIO. */
+        const uint8_t data[2] = {0x0Fu, 0x00u};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_RADIO: {
+        const uint8_t data[1] = {(uint8_t)radio_mode_get()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_DPI: {
+        const uint16_t cpi = settings_cpi();
+        const uint8_t data[2] = {(uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8)};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_DPI: {
+        if (plen < 2u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_INFO: {
-            /* bit0 sensor, bit1 radio, bit2 battery, bit3 BIO. */
-            const uint8_t data[2] = { 0x0Fu, 0x00u };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        settings_set_cpi((uint16_t)(frame[3] | (frame[4] << 8)));
+
+        const uint16_t cpi = settings_cpi();
+        const uint8_t data[2] = {(uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8)};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_SENSOR: {
+        const uint8_t data[1] = {settings_mode()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_SENSOR: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_RADIO: {
-            const uint8_t data[1] = { (uint8_t)radio_mode_get() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        if (frame[3] >= (uint8_t)PAW3395_MODE_COUNT) {
+            proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_DPI: {
-            const uint16_t cpi = settings_cpi();
-            const uint8_t  data[2] = { (uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8) };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        settings_set_mode(frame[3]);
+
+        const uint8_t data[1] = {settings_mode()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_LIFT: {
+        const uint8_t data[1] = {settings_lift()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_LIFT: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_DPI: {
-            if (plen < 2u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            settings_set_cpi((uint16_t)(frame[3] | (frame[4] << 8)));
-
-            const uint16_t cpi = settings_cpi();
-            const uint8_t  data[2] = { (uint8_t)(cpi & 0xFFu), (uint8_t)(cpi >> 8) };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        if (frame[3] > (uint8_t)PAW3395_LIFT_CUT_2MM) {
+            proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_SENSOR: {
-            const uint8_t data[1] = { settings_mode() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        settings_set_lift(frame[3]);
+
+        const uint8_t data[1] = {settings_lift()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_AIR_SENS: {
+        const uint8_t data[1] = {settings_air_sens_idx()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_AIR_SENS: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_SENSOR: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            if (frame[3] >= (uint8_t)PAW3395_MODE_COUNT) {
-                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
-                break;
-            }
-
-            settings_set_mode(frame[3]);
-
-            const uint8_t data[1] = { settings_mode() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        if (frame[3] >= air_mouse_sens_count()) {
+            proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_LIFT: {
-            const uint8_t data[1] = { settings_lift() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        settings_set_air_sens(frame[3]);
+
+        const uint8_t data[1] = {settings_air_sens_idx()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_AIR_ODR: {
+        const uint8_t data[1] = {settings_air_odr_idx()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_AIR_ODR: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_LIFT: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            if (frame[3] > (uint8_t)PAW3395_LIFT_CUT_2MM) {
-                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
-                break;
-            }
-
-            settings_set_lift(frame[3]);
-
-            const uint8_t data[1] = { settings_lift() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        if (frame[3] >= air_mouse_odr_count()) {
+            proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_AIR_SENS: {
-            const uint8_t data[1] = { settings_air_sens_idx() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        settings_set_air_odr(frame[3]);
+
+        const uint8_t data[1] = {settings_air_odr_idx()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_RGB: {
+        uint8_t data[6];
+        settings_rgb_get(data);
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_RGB: {
+        if (plen < 6u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
+            break;
+        }
+        if (frame[4] > 1u) {
+            proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_AIR_SENS: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
+        settings_set_rgb(frame[3], frame[4], frame[5], frame[6], frame[7], frame[8]);
 
-            if (frame[3] >= air_mouse_sens_count()) {
-                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
-                break;
-            }
+        uint8_t data[6];
+        settings_rgb_get(data);
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
 
-            settings_set_air_sens(frame[3]);
+    case PROTO_CMD_GET_OLED: {
+        const uint8_t data[1] = {settings_oled_enable()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
 
-            const uint8_t data[1] = { settings_air_sens_idx() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+    case PROTO_CMD_SET_OLED: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_AIR_ODR: {
-            const uint8_t data[1] = { settings_air_odr_idx() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        settings_set_oled(frame[3]);
+
+        const uint8_t data[1] = {settings_oled_enable()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    /* Whether the panel, the LED rail and the BIO module may run on battery
+     * as well as off the cable. */
+    case PROTO_CMD_GET_PERIPH: {
+        const uint8_t data[1] = {settings_periph_batt()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_PERIPH: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_AIR_ODR: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
+        settings_set_periph_batt(frame[3]);
 
-            if (frame[3] >= air_mouse_odr_count()) {
-                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
-                break;
-            }
+        const uint8_t data[1] = {settings_periph_batt()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
 
-            settings_set_air_odr(frame[3]);
+    /* The vibration motor as a one-shot duration in ms, 0 stopping it now.
+     * The pulse needs no clock, so it can be started from here, and
+     * motor_poll() in the main loop is what ends it. */
+    case PROTO_CMD_GET_MOTOR: {
+        const uint8_t data[1] = {motor_active() ? 1u : 0u};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
 
-            const uint8_t data[1] = { settings_air_odr_idx() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+    case PROTO_CMD_SET_MOTOR: {
+        uint16_t ms;
+
+        if (plen < 2u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_RGB: {
-            uint8_t data[6];
-            settings_rgb_get(data);
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        ms = (uint16_t)(frame[3] | (frame[4] << 8));
+        if (ms > PROTO_MOTOR_MAX_MS) {
+            ms = PROTO_MOTOR_MAX_MS;
+        }
+
+        motor_pulse(ms);
+
+        const uint8_t data[1] = {motor_active() ? 1u : 0u};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_MOTOR_EN: {
+        const uint8_t data[1] = {settings_motor_enable()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_MOTOR_EN: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_RGB: {
-            if (plen < 6u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-            if (frame[4] > 1u) {
-                proto_reply(cmd, seq, PROTO_ST_UNSUPPORTED, NULL, 0u);
-                break;
-            }
+        settings_set_motor_enable(frame[3]);
 
-            settings_set_rgb(frame[3], frame[4], frame[5], frame[6], frame[7], frame[8]);
+        const uint8_t data[1] = {settings_motor_enable()};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
 
-            uint8_t data[6];
-            settings_rgb_get(data);
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+    /* Report rate in Hz. The first payload byte picks the link: 0 USB, 1 RF,
+     * 2 BLE. The setter snaps to the nearest supported rate. */
+    case PROTO_CMD_GET_RATE: {
+        uint16_t hz;
+
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_GET_OLED: {
-            const uint8_t data[1] = { settings_oled_enable() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        hz = (frame[3] == 1u)   ? settings_report_hz_rf()
+             : (frame[3] == 2u) ? settings_report_hz_ble()
+                                : settings_report_hz();
+
+        const uint8_t data[2] = {(uint8_t)(hz & 0xFFu), (uint8_t)(hz >> 8)};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_SET_RATE: {
+        uint8_t link;
+        uint16_t hz;
+
+        if (plen < 3u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
 
-        case PROTO_CMD_SET_OLED: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
+        link = frame[3];
+        hz = (uint16_t)(frame[4] | (frame[5] << 8));
 
-            settings_set_oled(frame[3]);
-
-            const uint8_t data[1] = { settings_oled_enable() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
+        if (link == 1u) {
+            settings_set_report_hz_rf(hz);
+        } else if (link == 2u) {
+            settings_set_report_hz_ble(hz);
+        } else {
+            settings_set_report_hz(hz);
         }
 
-        /* Whether the panel, the LED rail and the BIO module may run on battery
-         * as well as off the cable. */
-        case PROTO_CMD_GET_PERIPH: {
-            const uint8_t data[1] = { settings_periph_batt() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
+        hz = (link == 1u)   ? settings_report_hz_rf()
+             : (link == 2u) ? settings_report_hz_ble()
+                            : settings_report_hz();
+
+        const uint8_t data[2] = {(uint8_t)(hz & 0xFFu), (uint8_t)(hz >> 8)};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
+
+    case PROTO_CMD_GET_BATTERY: {
+        const uint16_t mv = bat_voltage_mv();
+
+        /* Linear 3.00 V .. 4.20 V; the sensor pin is the coarse gauge here. */
+        uint16_t pct = 0u;
+        if (mv > 3000u) {
+            pct = (uint16_t)((mv - 3000u) / 12u);
+        }
+        if (pct > 100u) {
+            pct = 100u;
         }
 
-        case PROTO_CMD_SET_PERIPH: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
+        const uint8_t flags =
+            (uint8_t)((bat_charging() ? 0x01u : 0u) | (bat_power_good() ? 0x02u : 0u) |
+                      (bat_charge_fault() ? 0x04u : 0u));
+        const uint8_t data[4] = {(uint8_t)(mv & 0xFFu), (uint8_t)(mv >> 8), (uint8_t)pct, flags};
+        proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+        break;
+    }
 
-            settings_set_periph_batt(frame[3]);
-
-            const uint8_t data[1] = { settings_periph_batt() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+    case PROTO_CMD_BIO_ACQ: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
+        settings_set_bio(frame[3]);
+        proto_reply(cmd, seq, PROTO_ST_OK, NULL, 0u);
+        break;
+    }
 
-        /* The vibration motor as a one-shot duration in ms, 0 stopping it now.
-         * The pulse needs no clock, so it can be started from here, and
-         * motor_poll() in the main loop is what ends it. */
-        case PROTO_CMD_GET_MOTOR: {
-            const uint8_t data[1] = { motor_active() ? 1u : 0u };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
+    case PROTO_CMD_BIO_SLEEP: {
+        if (plen < 1u) {
+            proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
             break;
         }
-
-        case PROTO_CMD_SET_MOTOR: {
-            uint16_t ms;
-
-            if (plen < 2u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            ms = (uint16_t)(frame[3] | (frame[4] << 8));
-            if (ms > PROTO_MOTOR_MAX_MS) {
-                ms = PROTO_MOTOR_MAX_MS;
-            }
-
-            motor_pulse(ms);
-
-            const uint8_t data[1] = { motor_active() ? 1u : 0u };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
+        if (frame[3] != 0u) {
+            bio_sleep_enable();
+        } else {
+            bio_sleep_disable();
         }
+        proto_reply(cmd, seq, PROTO_ST_OK, NULL, 0u);
+        break;
+    }
 
-        case PROTO_CMD_GET_MOTOR_EN: {
-            const uint8_t data[1] = { settings_motor_enable() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
-        }
-
-        case PROTO_CMD_SET_MOTOR_EN: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            settings_set_motor_enable(frame[3]);
-
-            const uint8_t data[1] = { settings_motor_enable() };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
-        }
-
-        /* Report rate in Hz. The first payload byte picks the link: 0 USB, 1 RF,
-         * 2 BLE. The setter snaps to the nearest supported rate. */
-        case PROTO_CMD_GET_RATE: {
-            uint16_t hz;
-
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            hz = (frame[3] == 1u) ? settings_report_hz_rf()
-               : (frame[3] == 2u) ? settings_report_hz_ble() : settings_report_hz();
-
-            const uint8_t data[2] = { (uint8_t)(hz & 0xFFu), (uint8_t)(hz >> 8) };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
-        }
-
-        case PROTO_CMD_SET_RATE: {
-            uint8_t  link;
-            uint16_t hz;
-
-            if (plen < 3u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-
-            link = frame[3];
-            hz   = (uint16_t)(frame[4] | (frame[5] << 8));
-
-            if (link == 1u) {
-                settings_set_report_hz_rf(hz);
-            } else if (link == 2u) {
-                settings_set_report_hz_ble(hz);
-            } else {
-                settings_set_report_hz(hz);
-            }
-
-            hz = (link == 1u) ? settings_report_hz_rf()
-               : (link == 2u) ? settings_report_hz_ble() : settings_report_hz();
-
-            const uint8_t data[2] = { (uint8_t)(hz & 0xFFu), (uint8_t)(hz >> 8) };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
-        }
-
-        case PROTO_CMD_GET_BATTERY: {
-            const uint16_t mv = bat_voltage_mv();
-
-            /* Linear 3.00 V .. 4.20 V; the sensor pin is the coarse gauge here. */
-            uint16_t pct = 0u;
-            if (mv > 3000u) {
-                pct = (uint16_t)((mv - 3000u) / 12u);
-            }
-            if (pct > 100u) {
-                pct = 100u;
-            }
-
-            const uint8_t flags = (uint8_t)((bat_charging() ? 0x01u : 0u) |
-                                            (bat_power_good() ? 0x02u : 0u) |
-                                            (bat_charge_fault() ? 0x04u : 0u));
-            const uint8_t data[4] = { (uint8_t)(mv & 0xFFu), (uint8_t)(mv >> 8), (uint8_t)pct, flags };
-            proto_reply(cmd, seq, PROTO_ST_OK, data, sizeof(data));
-            break;
-        }
-
-        case PROTO_CMD_BIO_ACQ: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-            settings_set_bio(frame[3]);
-            proto_reply(cmd, seq, PROTO_ST_OK, NULL, 0u);
-            break;
-        }
-
-        case PROTO_CMD_BIO_SLEEP: {
-            if (plen < 1u) {
-                proto_reply(cmd, seq, PROTO_ST_BADLEN, NULL, 0u);
-                break;
-            }
-            if (frame[3] != 0u) {
-                bio_sleep_enable();
-            } else {
-                bio_sleep_disable();
-            }
-            proto_reply(cmd, seq, PROTO_ST_OK, NULL, 0u);
-            break;
-        }
-
-        default:
-            proto_reply(cmd, seq, PROTO_ST_UNKNOWN, NULL, 0u);
-            break;
+    default:
+        proto_reply(cmd, seq, PROTO_ST_UNKNOWN, NULL, 0u);
+        break;
     }
 }
 
-void proto_handle_get(uint8_t *frame, uint16_t len)
-{
+void proto_handle_get(uint8_t *frame, uint16_t len) {
     if (frame == NULL) {
         return;
     }

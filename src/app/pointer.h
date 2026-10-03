@@ -18,41 +18,41 @@
  * Button bits mirror the HID button report so the caller can pass its mask
  * straight through. */
 
-#define POINTER_BTN_LEFT   0x01u
-#define POINTER_BTN_RIGHT  0x02u
-#define POINTER_BTN_MID    0x04u
+#define POINTER_BTN_LEFT  0x01u
+#define POINTER_BTN_RIGHT 0x02u
+#define POINTER_BTN_MID   0x04u
 
 typedef struct {
-    float    counts_x;              /* mouse counts per degree of rotation */
-    float    counts_y;
-    uint8_t  swap;                  /* exchange the X/Y angles             */
-    uint8_t  invert_x;              /* reverse each axis                   */
-    uint8_t  invert_y;
-    uint32_t settle_ms;             /* freeze held after a button release  */
-    float    unlock_deg;            /* rotation while held that resumes    */
-    float    filter_min_cutoff_hz;  /* One Euro: still cutoff              */
-    float    filter_beta;           /* One Euro: speed adaptation          */
-    float    filter_deriv_cutoff_hz;/* One Euro: derivative smoothing      */
+    float counts_x; /* mouse counts per degree of rotation */
+    float counts_y;
+    uint8_t swap;     /* exchange the X/Y angles             */
+    uint8_t invert_x; /* reverse each axis                   */
+    uint8_t invert_y;
+    uint32_t settle_ms;           /* freeze held after a button release  */
+    float unlock_deg;             /* rotation while held that resumes    */
+    float filter_min_cutoff_hz;   /* One Euro: still cutoff              */
+    float filter_beta;            /* One Euro: speed adaptation          */
+    float filter_deriv_cutoff_hz; /* One Euro: derivative smoothing      */
 } pointer_cfg_t;
 
 /* Initializer matching the shipped tuning. */
-#define POINTER_CFG_DEFAULT                                     \
-    {                                                           \
-        .counts_x              = 36.0f,                         \
-        .counts_y              = 32.0f,                         \
-        .swap                  = 0u,                            \
-        .invert_x              = 0u,                            \
-        .invert_y              = 0u,                            \
-        .settle_ms             = 35u,                           \
-        .unlock_deg            = 1.0f,                          \
-        .filter_min_cutoff_hz  = 3.0f,                          \
-        .filter_beta           = 0.18f,                         \
-        .filter_deriv_cutoff_hz = 2.0f,                         \
+#define POINTER_CFG_DEFAULT             \
+    {                                   \
+        .counts_x = 36.0f,              \
+        .counts_y = 32.0f,              \
+        .swap = 0u,                     \
+        .invert_x = 0u,                 \
+        .invert_y = 0u,                 \
+        .settle_ms = 35u,               \
+        .unlock_deg = 1.0f,             \
+        .filter_min_cutoff_hz = 3.0f,   \
+        .filter_beta = 0.18f,           \
+        .filter_deriv_cutoff_hz = 2.0f, \
     }
 
 /* One Euro filter state (one per axis). */
 typedef struct {
-    bool  initialized;
+    bool initialized;
     float last_raw;
     float filtered;
     float deriv;
@@ -63,28 +63,28 @@ typedef struct {
     uint8_t swap, invert_x, invert_y;
 
     uint32_t settle_ms;
-    float    unlock_deg;
-    float    filter_min_cutoff_hz;
-    float    filter_beta;
-    float    filter_deriv_cutoff_hz;
+    float unlock_deg;
+    float filter_min_cutoff_hz;
+    float filter_beta;
+    float filter_deriv_cutoff_hz;
 
-    bool  neutral_pending;
+    bool neutral_pending;
     float neutral_yaw, neutral_pitch;
 
-    bool  angle_ready;
+    bool angle_ready;
     float last_fx, last_fy;
     float pend_x, pend_y;
 
     pointer_euro_t fx, fy;
 
     uint32_t now_ms;
-    uint8_t  raw_prev;
-    uint8_t  raw;
-    bool     frozen, settling;
+    uint8_t raw_prev;
+    uint8_t raw;
+    bool frozen, settling;
     uint32_t settle_at;
-    float    start_yaw, start_pitch;
-    bool     clutch;
-    uint8_t  mid_prev;
+    float start_yaw, start_pitch;
+    bool clutch;
+    uint8_t mid_prev;
 } pointer_t;
 
 void pointer_init(pointer_t *p, const pointer_cfg_t *cfg);
@@ -102,9 +102,7 @@ void pointer_rebase(pointer_t *p);
 /* Feed one attitude sample. `raw_buttons` is the undebounced mask (so the guard
  * freezes on the press edge). Writes the relative counts for this sample, which
  * are zero while the guard or the entry re-base is in effect. */
-void pointer_update(pointer_t *p,
-                    float roll_deg, float yaw_deg, float pitch_deg,
-                    uint8_t raw_buttons, uint32_t now_ms, float dt,
-                    int16_t *dx, int16_t *dy);
+void pointer_update(pointer_t *p, float roll_deg, float yaw_deg, float pitch_deg,
+                    uint8_t raw_buttons, uint32_t now_ms, float dt, int16_t *dx, int16_t *dy);
 
 #endif /* __POINTER_H__ */

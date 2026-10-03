@@ -46,12 +46,12 @@ void bio_set_checkup_seconds(uint32_t seconds);
  * heart-rate waveform (-128..127), then heartrate, spo2, bk, rsv[8], sdnn,
  * rmssd, nn50, pnn50, rra[6], rsv2[2]. */
 typedef struct __attribute__((packed)) {
-    uint8_t header;        /* 0xFF */
-    int8_t  acdata[64];    /* waveform, -128..127 */
+    uint8_t header;    /* 0xFF */
+    int8_t acdata[64]; /* waveform, -128..127 */
     uint8_t heartrate;
     uint8_t spo2;
     uint8_t bk;
-    uint8_t rsv[8];        /* [0] fatigue, [3] systolic, [4] diastolic, ... */
+    uint8_t rsv[8]; /* [0] fatigue, [3] systolic, [4] diastolic, ... */
     uint8_t sdnn;
     uint8_t rmssd;
     uint8_t nn50;

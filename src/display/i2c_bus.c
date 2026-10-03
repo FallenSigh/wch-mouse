@@ -20,30 +20,28 @@
  * the rise time is short enough. A board without them only has the CH585's
  * internal 20-50 kOhm, whose ~9 us rise time barely fits even 100 kHz - drop
  * I2C_CLOCK_HZ and raise I2C_RETRIES there. */
-#define I2C_CLOCK_HZ     400000u
-#define I2C_OWN_ADDR     0x42u
-#define I2C_SPIN_LIMIT   200000u   /* bounded polls; a few ms worst case */
-#define I2C_RETRIES      1u        /* pull-ups fitted: no retries expected */
+#define I2C_CLOCK_HZ   400000u
+#define I2C_OWN_ADDR   0x42u
+#define I2C_SPIN_LIMIT 200000u /* bounded polls; a few ms worst case */
+#define I2C_RETRIES    1u      /* pull-ups fitted: no retries expected */
 
-#define I2C_7BIT_MAX     0x7Fu
+#define I2C_7BIT_MAX 0x7Fu
 
 /* An unrecovered NACK leaves SDA held and the state machine stuck, so reset
  * the peripheral and re-init after every failed transfer. */
-static void i2c_bus_recover(void)
-{
+static void i2c_bus_recover(void) {
     I2C_GenerateSTOP(ENABLE);
     I2C_ClearFlag(I2C_FLAG_AF);
 
     I2C_SoftwareResetCmd(ENABLE);
     I2C_SoftwareResetCmd(DISABLE);
 
-    I2C_Init(I2C_Mode_I2C, I2C_CLOCK_HZ, I2C_DutyCycle_16_9,
-             I2C_Ack_Enable, I2C_AckAddr_7bit, I2C_OWN_ADDR);
+    I2C_Init(I2C_Mode_I2C, I2C_CLOCK_HZ, I2C_DutyCycle_16_9, I2C_Ack_Enable, I2C_AckAddr_7bit,
+             I2C_OWN_ADDR);
     I2C_Cmd(ENABLE);
 }
 
-static bool i2c_wait_flag(uint32_t flag)
-{
+static bool i2c_wait_flag(uint32_t flag) {
     uint32_t spin = I2C_SPIN_LIMIT;
 
     while (I2C_GetFlagStatus(flag) == RESET) {
@@ -55,14 +53,13 @@ static bool i2c_wait_flag(uint32_t flag)
     return true;
 }
 
-void i2c_bus_init(void)
-{
+void i2c_bus_init(void) {
     /* SCL_/SDA_ on PB21/PB20 instead of the default PB13/PB12 (USB HS). */
     GPIOPinRemap(ENABLE, RB_PIN_I2C);
     GPIOB_ModeCfg(BOARD_I2C_SDA_PIN | BOARD_I2C_SCL_PIN, GPIO_ModeIN_PU);
 
-    I2C_Init(I2C_Mode_I2C, I2C_CLOCK_HZ, I2C_DutyCycle_16_9,
-             I2C_Ack_Enable, I2C_AckAddr_7bit, I2C_OWN_ADDR);
+    I2C_Init(I2C_Mode_I2C, I2C_CLOCK_HZ, I2C_DutyCycle_16_9, I2C_Ack_Enable, I2C_AckAddr_7bit,
+             I2C_OWN_ADDR);
     I2C_Cmd(ENABLE);
 
     LOG_I("I2C", "master up, SCL/SDA on PB21/PB20");
@@ -73,8 +70,7 @@ void i2c_bus_init(void)
  * sequence the peripheral needs to clear ADDR - I2C_GetFlagStatus alone only
  * touches one register, so ADDR would stay set and the TXE loop could never
  * start. AF (acknowledge failure) is how a missing device shows up. */
-static bool i2c_send_address(uint8_t addr7)
-{
+static bool i2c_send_address(uint8_t addr7) {
     uint32_t spin = I2C_SPIN_LIMIT;
 
     I2C_Send7bitAddress((uint8_t)(addr7 << 1), I2C_Direction_Transmitter);
@@ -91,8 +87,7 @@ static bool i2c_send_address(uint8_t addr7)
     return false;
 }
 
-bool i2c_bus_probe(uint8_t addr7)
-{
+bool i2c_bus_probe(uint8_t addr7) {
     bool present;
 
     if (addr7 > I2C_7BIT_MAX) {
@@ -115,9 +110,8 @@ bool i2c_bus_probe(uint8_t addr7)
 
 /* One transaction: optional leading byte, then len payload bytes, then STOP.
  * Reports failure without recovering - the callers retry. */
-static bool i2c_write_transfer(uint8_t addr7, bool with_prefix, uint8_t prefix,
-                               const uint8_t *data, uint16_t len)
-{
+static bool i2c_write_transfer(uint8_t addr7, bool with_prefix, uint8_t prefix, const uint8_t *data,
+                               uint16_t len) {
     I2C_GenerateSTART(ENABLE);
     if (!i2c_wait_flag(I2C_FLAG_SB)) {
         LOG_E("I2C", "no start s1=%04X s2=%04X", (unsigned)R16_I2C_STAR1, (unsigned)R16_I2C_STAR2);
@@ -126,8 +120,8 @@ static bool i2c_write_transfer(uint8_t addr7, bool with_prefix, uint8_t prefix,
     }
 
     if (!i2c_send_address(addr7)) {
-        LOG_E("I2C", "addr 0x%02X nack s1=%04X s2=%04X", (unsigned)addr7,
-              (unsigned)R16_I2C_STAR1, (unsigned)R16_I2C_STAR2);
+        LOG_E("I2C", "addr 0x%02X nack s1=%04X s2=%04X", (unsigned)addr7, (unsigned)R16_I2C_STAR1,
+              (unsigned)R16_I2C_STAR2);
         i2c_bus_recover();
         return false;
     }
@@ -144,8 +138,8 @@ static bool i2c_write_transfer(uint8_t addr7, bool with_prefix, uint8_t prefix,
 
     for (uint16_t i = 0u; i < len; i++) {
         if (!i2c_wait_flag(I2C_FLAG_TXE)) {
-            LOG_E("I2C", "no txe at %u s1=%04X s2=%04X", (unsigned)i,
-                  (unsigned)R16_I2C_STAR1, (unsigned)R16_I2C_STAR2);
+            LOG_E("I2C", "no txe at %u s1=%04X s2=%04X", (unsigned)i, (unsigned)R16_I2C_STAR1,
+                  (unsigned)R16_I2C_STAR2);
             i2c_bus_recover();
             return false;
         }
@@ -162,8 +156,7 @@ static bool i2c_write_transfer(uint8_t addr7, bool with_prefix, uint8_t prefix,
     return true;
 }
 
-bool i2c_bus_write(uint8_t addr7, const uint8_t *data, uint16_t len)
-{
+bool i2c_bus_write(uint8_t addr7, const uint8_t *data, uint16_t len) {
     if (addr7 > I2C_7BIT_MAX || data == NULL || len == 0u) {
         LOG_E("I2C", "bad args addr=0x%02X len=%u", (unsigned)addr7, (unsigned)len);
         return false;
@@ -179,8 +172,7 @@ bool i2c_bus_write(uint8_t addr7, const uint8_t *data, uint16_t len)
     return false;
 }
 
-bool i2c_bus_write_reg(uint8_t addr7, uint8_t reg, const uint8_t *data, uint16_t len)
-{
+bool i2c_bus_write_reg(uint8_t addr7, uint8_t reg, const uint8_t *data, uint16_t len) {
     if (addr7 > I2C_7BIT_MAX || data == NULL || len == 0u) {
         LOG_E("I2C", "bad args addr=0x%02X len=%u", (unsigned)addr7, (unsigned)len);
         return false;

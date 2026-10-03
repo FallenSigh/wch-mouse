@@ -3,7 +3,7 @@
 #include "bat.h"
 #include "log.h"
 
-#define USB_HID_EP   DEF_UEP4
+#define USB_HID_EP DEF_UEP4
 
 /* Window after a VBUS (re-)plug during which the PHY is kept up to let a
  * possible host enumerate, even while a radio link owns the mouse. */
@@ -18,11 +18,11 @@
  *     SET_CONFIGURATION.
  * So usb_ready() clears the device state itself whenever VBUS goes away, and
  * reports no link whenever the PHY is powered down. */
-static bool     s_usb_enumerated;
-static bool     s_phy_on;
-static uint8_t  s_enum_logged;
-static bool     s_vbus_prev;
-static bool     s_probing;
+static bool s_usb_enumerated;
+static bool s_phy_on;
+static uint8_t s_enum_logged;
+static bool s_vbus_prev;
+static bool s_probing;
 static uint32_t s_probe_until_ms;
 static uint32_t s_tx_attempts;
 static uint32_t s_tx_ok;
@@ -32,19 +32,17 @@ static uint32_t s_stat_ms;
 /* USBHS_DevConfig / USBHS_DevEnumStatus are only cleared by the driver on a
  * bus reset, so whenever we power the PHY down ourselves the stale
  * "enumerated" state has to be dropped here. */
-static void usb_forget(void)
-{
-    USBHS_DevConfig     = 0;
+static void usb_forget(void) {
+    USBHS_DevConfig = 0;
     USBHS_DevEnumStatus = 0;
-    s_usb_enumerated    = false;
+    s_usb_enumerated = false;
 }
 
 /* Keep the USBHS PHY and its PLL powered only while it can be used. The PHY
  * costs 10-20 mA, which is pure waste on battery, and USBHS_Device_Init() is
  * a full re-init on its ENABLE path while DISABLE powers the PHY PLL down -
  * so it is safe to toggle as VBUS and the active link come and go. */
-static void usb_phy_set(bool on)
-{
+static void usb_phy_set(bool on) {
     if (on == s_phy_on) {
         return;
     }
@@ -70,8 +68,7 @@ static void usb_phy_set(bool on)
  * reset. So when VBUS disappears, forget the whole device state ourselves:
  * that keeps a dumb charger - which can never set it - from looking like a
  * host, and gives a re-plugged host a clean slate to enumerate into. */
-static bool usb_ready(void)
-{
+static bool usb_ready(void) {
     if (!bat_power_good()) {
         usb_forget();
         return false;
@@ -85,35 +82,32 @@ static bool usb_ready(void)
     return s_usb_enumerated;
 }
 
-static bool usb_init(void)
-{
+static bool usb_init(void) {
     usb_phy_set(bat_power_good());
     return true;
 }
 
-static void usb_poll(uint32_t now_ms)
-{
+static void usb_poll(uint32_t now_ms) {
     /* A host that is really there takes a report every period, so if nothing has
      * been accepted for this long the "enumerated" state is stale. This matters
      * because USBHS_DevEnumStatus is only ever cleared by a bus reset: a cable
      * drop whose VBUS edge was missed would otherwise leave us claiming a link
      * that is gone, and every report would go into the void. */
-    static uint32_t       ok_seen;
-    static uint32_t       ok_ms;
+    static uint32_t ok_seen;
+    static uint32_t ok_ms;
     static const uint32_t stale_ms = 100u;
 
-    const bool vbus     = bat_power_good();
+    const bool vbus = bat_power_good();
     const bool usb_owns = (transport_router_active() == TR_USB);
     const bool ble_owns = (transport_router_active() == TR_BLE);
 
     if (s_tx_ok != ok_seen) {
         ok_seen = s_tx_ok;
-        ok_ms   = now_ms;
+        ok_ms = now_ms;
     } else if (!usb_owns) {
-        ok_ms = now_ms;                 /* not our link, so not stale */
+        ok_ms = now_ms; /* not our link, so not stale */
     } else if ((uint32_t)(now_ms - ok_ms) >= stale_ms) {
-        LOG_W("USB", "nothing accepted in %u ms, dropping device state",
-              (unsigned)stale_ms);
+        LOG_W("USB", "nothing accepted in %u ms, dropping device state", (unsigned)stale_ms);
         usb_forget();
         ok_ms = now_ms;
     }
@@ -122,7 +116,7 @@ static void usb_poll(uint32_t now_ms)
      * briefly so a host attached to that cable can still enumerate and take
      * the link over. */
     if (vbus && !s_vbus_prev && ble_owns) {
-        s_probing        = true;
+        s_probing = true;
         s_probe_until_ms = now_ms + USB_PROBE_MS;
     }
     s_vbus_prev = vbus;
@@ -137,8 +131,8 @@ static void usb_poll(uint32_t now_ms)
 
     if (now_ms - s_stat_ms >= 5000u) {
         s_stat_ms = now_ms;
-        LOG_I("USB", "tx att %u ok %u busy %u in 5s", (unsigned)s_tx_attempts,
-              (unsigned)s_tx_ok, (unsigned)s_tx_busy);
+        LOG_I("USB", "tx att %u ok %u busy %u in 5s", (unsigned)s_tx_attempts, (unsigned)s_tx_ok,
+              (unsigned)s_tx_busy);
         s_tx_attempts = 0;
         s_tx_ok = 0;
         s_tx_busy = 0;
@@ -151,27 +145,23 @@ static void usb_poll(uint32_t now_ms)
 
         if (en != s_enum_logged) {
             s_enum_logged = en;
-            LOG_I("USB", "enum=%u vbus=%u", (unsigned)en,
-                  (unsigned)(vbus ? 1u : 0u));
+            LOG_I("USB", "enum=%u vbus=%u", (unsigned)en, (unsigned)(vbus ? 1u : 0u));
         }
     }
 }
 
-static bool usb_link_up(void)
-{
+static bool usb_link_up(void) {
     return usb_ready();
 }
 
-static bool usb_send(const MouseReport_t *rpt)
-{
+static bool usb_send(const MouseReport_t *rpt) {
     if (!usb_ready()) {
         return false;
     }
 
     s_tx_attempts++;
 
-    if (USBHS_Endp_DataUp(USB_HID_EP, (uint8_t *)rpt, sizeof(*rpt),
-                          DEF_UEP_CPY_LOAD) == 0) {
+    if (USBHS_Endp_DataUp(USB_HID_EP, (uint8_t *)rpt, sizeof(*rpt), DEF_UEP_CPY_LOAD) == 0) {
         s_tx_ok++;
         return true;
     }
@@ -181,10 +171,10 @@ static bool usb_send(const MouseReport_t *rpt)
 }
 
 const transport_t transport_usb = {
-    .id      = TR_USB,
-    .name    = "usb",
-    .init    = usb_init,
+    .id = TR_USB,
+    .name = "usb",
+    .init = usb_init,
     .link_up = usb_link_up,
-    .send    = usb_send,
-    .poll    = usb_poll,
+    .send = usb_send,
+    .poll = usb_poll,
 };
