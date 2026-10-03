@@ -95,6 +95,8 @@ set(APP_SOURCES
     src/app/motor.c
     src/app/mouse.c
     src/app/air_mouse.c
+    src/app/attitude.c
+    src/app/pointer.c
     src/app/bio.c
     src/app/power.c
     src/app/proto.c
