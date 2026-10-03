@@ -24,7 +24,7 @@
 
 /* The sustained air-mouse colour: brighter than the idle underglow, but not at
  * full blast. */
-#define RGB_FX_BRIGHT 48u
+#define RGB_FX_BRIGHT 16u
 
 #define RGB_FX_PERIOD_MS  33u    /* ~30 Hz refresh          */
 #define RGB_FX_BLINK_MASK 0x100u /* toggles the flash ~2 Hz */
