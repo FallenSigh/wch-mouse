@@ -300,15 +300,34 @@ impl Device {
     }
 
     /// One typed transaction: build, send, poll, and reject a non-OK status.
+    ///
+    /// The RF link drops a reply now and then; a timed-out request is retried a
+    /// few times. The device re-runs the command, so this is safe because the
+    /// getters and the setters are idempotent - the one-shot buzz is excluded.
     fn request(&mut self, cmd: Command, payload: &[u8]) -> Result<Vec<u8>> {
-        let seq = self.next_seq();
-        let reply = self
-            .transport
-            .transact(cmd.code(), seq, payload, self.kind.timeout())?;
-        if !reply.status.is_ok() {
-            return Err(Error::Status(reply.status));
+        const ATTEMPTS: u8 = 3;
+        let attempts = if matches!(cmd, Command::SetMotor) {
+            1
+        } else {
+            ATTEMPTS
+        };
+
+        let mut attempt = 0u8;
+        loop {
+            attempt += 1;
+            let seq = self.next_seq();
+            match self
+                .transport
+                .transact(cmd.code(), seq, payload, self.kind.timeout())
+            {
+                Ok(reply) if !reply.status.is_ok() => {
+                    return Err(Error::Status(reply.status));
+                }
+                Ok(reply) => return Ok(reply.data),
+                Err(Error::Timeout { .. }) if attempt < attempts => continue,
+                Err(e) => return Err(e),
+            }
         }
-        Ok(reply.data)
     }
 
     // ---- status -------------------------------------------------------
