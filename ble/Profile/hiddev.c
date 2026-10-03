@@ -16,7 +16,6 @@
 
 #include "CONFIG.h"
 #include "battservice.h"
-#include "scanparamservice.h"
 #include "devinfoservice.h"
 #include "log.h"
 #include "hiddev.h"
@@ -27,9 +26,6 @@
 
 // Battery measurement period in (625us)
 #define DEFAULT_BATT_PERIOD               15000
-
-// TRUE to run scan parameters refresh notify test
-#define DEFAULT_SCAN_PARAM_NOTIFY_TEST    TRUE
 
 // Advertising intervals (units of 625us, 160=100ms)
 #define HID_INITIAL_ADV_INT_MIN           48
@@ -110,7 +106,6 @@ static void hidDevPairStateCB(uint16_t connHandle, uint8_t state, uint8_t status
 static void hidDevPasscodeCB(uint8_t *deviceAddr, uint16_t connectionHandle,
                              uint8_t uiInputs, uint8_t uiOutputs);
 static void hidDevBattCB(uint8_t event);
-static void hidDevScanParamCB(uint8_t event);
 static void hidDevBattPeriodicTask(void);
 
 static hidRptMap_t *hidDevRptByHandle(uint16_t handle);
@@ -178,13 +173,9 @@ void HidDev_Init()
     GATTServApp_AddService(GATT_ALL_SERVICES); // GATT attributes
     DevInfo_AddService();
     Batt_AddService();
-    ScanParam_AddService();
 
     // Register for Battery service callback
     Batt_Register(hidDevBattCB);
-
-    // Register for Scan Parameters service callback
-    ScanParam_Register(hidDevScanParamCB);
 
     // Setup a delayed profile startup
     tmos_set_event(hidDevTaskId, START_DEVICE_EVT);
@@ -741,7 +732,6 @@ static void hidDevDisconnected(void)
 {
     // Reset client characteristic configuration descriptors
     Batt_HandleConnStatusCB(gapConnHandle, LINKDB_STATUS_UPDATE_REMOVED);
-    ScanParam_HandleConnStatusCB(gapConnHandle, LINKDB_STATUS_UPDATE_REMOVED);
     hidDevHandleConnStatusCB(gapConnHandle, LINKDB_STATUS_UPDATE_REMOVED);
 
     // Reset state variables
@@ -851,10 +841,6 @@ static void hidDevPairStateCB(uint16_t connHandle, uint8_t state, uint8_t status
         if(status == SUCCESS)
         {
             hidDevConnSecure = TRUE;
-
-#if DEFAULT_SCAN_PARAM_NOTIFY_TEST == TRUE
-            ScanParam_RefreshNotify(gapConnHandle);
-#endif
         }
     }
     else if(state == GAPBOND_PAIRING_STATE_BOND_SAVED)
@@ -914,19 +900,6 @@ static void hidDevBattCB(uint8_t event)
         // stop periodic measurement
         tmos_stop_task(hidDevTaskId, BATT_PERIODIC_EVT);
     }
-}
-
-/*********************************************************************
- * @fn      hidDevScanParamCB
- *
- * @brief   Callback function for scan parameter service.
- *
- * @param   event - service event
- *
- * @return  none
- */
-static void hidDevScanParamCB(uint8_t event)
-{
 }
 
 /*********************************************************************

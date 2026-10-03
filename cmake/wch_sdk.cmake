@@ -87,13 +87,12 @@ set(WCH_RADIO_SOURCES
     ${CMAKE_SOURCE_DIR}/ble/LIB/ble_task_scheduler.S)
 
 # Vendor-forked HOGP GATT profile layer (HID 0x1812, Battery 0x180F, Device
-# Information 0x180A, Scan Parameters). BLE transport only.
+# Information 0x180A). BLE transport only.
 set(WCH_BLE_PROFILE_SOURCES
     ${CMAKE_SOURCE_DIR}/ble/Profile/hiddev.c
     ${CMAKE_SOURCE_DIR}/ble/Profile/hidmouseservice.c
     ${CMAKE_SOURCE_DIR}/ble/Profile/battservice.c
-    ${CMAKE_SOURCE_DIR}/ble/Profile/devinfoservice.c
-    ${CMAKE_SOURCE_DIR}/ble/Profile/scanparamservice.c)
+    ${CMAKE_SOURCE_DIR}/ble/Profile/devinfoservice.c)
 
 find_program(WCHISP_EXECUTABLE wchisp)
 if(NOT WCHISP_EXECUTABLE)
