@@ -17,10 +17,9 @@
 #include <stdio.h>
 
 #include "CH58x_common.h"
+#include "board.h"
 #include "i2c_bus.h"
 #include "log.h"
-
-#define SSD1315_RST_PIN     GPIO_Pin_16   /* PB16, active low */
 
 uint8_t ssd1315_interface_iic_init(void)
 {
@@ -78,7 +77,7 @@ uint8_t ssd1315_interface_spi_cmd_data_gpio_write(uint8_t value)
 
 uint8_t ssd1315_interface_reset_gpio_init(void)
 {
-    GPIOB_ModeCfg(SSD1315_RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(BOARD_OLED_RST_PIN, GPIO_ModeOut_PP_5mA);
     return 0;
 }
 
@@ -90,7 +89,7 @@ uint8_t ssd1315_interface_reset_gpio_deinit(void)
 uint8_t ssd1315_interface_reset_gpio_write(uint8_t value)
 {
     if (value != 0u) {
-        GPIOB_SetBits(SSD1315_RST_PIN);
+        GPIOB_SetBits(BOARD_OLED_RST_PIN);
 
         /* LibDriver releases reset and sends the first command immediately,
          * but the controller does not answer on I2C until its oscillator and
@@ -98,7 +97,7 @@ uint8_t ssd1315_interface_reset_gpio_write(uint8_t value)
          * (AF) and the panel looks absent. */
         mDelaymS(120);
     } else {
-        GPIOB_ResetBits(SSD1315_RST_PIN);
+        GPIOB_ResetBits(BOARD_OLED_RST_PIN);
     }
 
     return 0;

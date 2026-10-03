@@ -12,6 +12,7 @@
 
 #include "UART.h"
 #include "bio.h"
+#include "board.h"
 #include "ch585_usbhs_device.h"
 
 /*******************************************************************************/
@@ -69,9 +70,9 @@ void UART3_ParaInit( uint8_t mode )
 void UART3_Init( uint8_t mode, uint32_t baudrate, uint8_t stopbits, uint8_t parity )
 {
     /* 配置串口3：先配置IO口模式，再配置串口 */
-    GPIOA_SetBits(GPIO_Pin_5);
-    GPIOA_ModeCfg(GPIO_Pin_4, GPIO_ModeIN_PU);      // RXD-配置上拉输入
-    GPIOA_ModeCfg(GPIO_Pin_5, GPIO_ModeOut_PP_5mA); // TXD-配置推挽输出，注意先让IO口输出高电平
+    GPIOA_SetBits(BOARD_BIO_TX_PIN);
+    GPIOA_ModeCfg(BOARD_BIO_RX_PIN, GPIO_ModeIN_PU);      // RXD-配置上拉输入
+    GPIOA_ModeCfg(BOARD_BIO_TX_PIN, GPIO_ModeOut_PP_5mA); // TXD-配置推挽输出，注意先让IO口输出高电平
     UART3_BaudRateCfg(baudrate);
     R8_UART3_FCR = (2 << 6) | RB_FCR_TX_FIFO_CLR | RB_FCR_RX_FIFO_CLR | RB_FCR_FIFO_EN;
     R8_UART3_LCR = RB_LCR_WORD_SZ;

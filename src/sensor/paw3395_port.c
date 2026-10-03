@@ -15,23 +15,17 @@
 
 #include "CH58x_common.h"
 #include "CH58x_sys.h"
+#include "board.h"
 
-#define PIN_MS_CS     GPIO_Pin_12
-#define PIN_MS_SCLK   GPIO_Pin_13
-#define PIN_MS_MOSI   GPIO_Pin_14
-#define PIN_MS_MISO   GPIO_Pin_15
-#define PIN_MS_MOTION GPIO_Pin_17
-#define PIN_MS_RST    GPIO_Pin_18
 /* Flying-wire copy of MOTION on PA7 (PB17 works for polling but cannot raise a
  * GPIO interrupt; PA7 can). */
-#define PIN_MS_MOTION_ALT GPIO_Pin_7
 
 static inline void cs_low(void) {
-    GPIOA_ResetBits(PIN_MS_CS);
+    GPIOA_ResetBits(BOARD_PAW_CS_PIN);
 }
 
 static inline void cs_high(void) {
-    GPIOA_SetBits(PIN_MS_CS);
+    GPIOA_SetBits(BOARD_PAW_CS_PIN);
 }
 
 /* PAW3395 uses MSB=0 for read, MSB=1 for write (the opposite of the BMI270). */
@@ -55,7 +49,7 @@ static void paw3395_delay_us(uint32_t period) {
 }
 
 bool paw3395_motion_ready(void) {
-    return GPIOA_ReadPortPin(PIN_MS_MOTION_ALT) == 0u;
+    return GPIOA_ReadPortPin(BOARD_PAW_MOTION_ALT_PIN) == 0u;
 }
 
 /* --- IRQ-driven motion burst -------------------------------------------- */
@@ -87,8 +81,8 @@ static void paw3395_motion_burst(void) {
  * the flash and the 32M clock are still down, so nothing here may execute from
  * flash. */
 __INTERRUPT __HIGH_CODE void GPIOA_IRQHandler(void) {
-    if (R16_PA_INT_IF & PIN_MS_MOTION_ALT) {
-        R16_PA_INT_IF = PIN_MS_MOTION_ALT;   /* RW1: clear */
+    if (R16_PA_INT_IF & BOARD_PAW_MOTION_ALT_PIN) {
+        R16_PA_INT_IF = BOARD_PAW_MOTION_ALT_PIN;   /* RW1: clear */
 
         /* Parked: record only. The burst needs the SPI bus and the flash, and
          * neither is up yet - paw3395_motion_start() picks the sample up. */
@@ -108,8 +102,8 @@ void paw3395_motion_start(void) {
     s_motion_dy = 0;
     s_motion_on = false;
 
-    R16_PA_INT_IF = PIN_MS_MOTION_ALT;
-    GPIOA_ITModeCfg(PIN_MS_MOTION_ALT, GPIO_ITMode_FallEdge);
+    R16_PA_INT_IF = BOARD_PAW_MOTION_ALT_PIN;
+    GPIOA_ITModeCfg(BOARD_PAW_MOTION_ALT_PIN, GPIO_ITMode_FallEdge);
 
     s_motion_on = true;
 
@@ -124,8 +118,8 @@ void paw3395_motion_start(void) {
 void paw3395_motion_stop(void) {
     s_motion_on = false;
     PFIC_DisableIRQ(GPIO_A_IRQn);
-    R16_PA_INT_EN &= ~PIN_MS_MOTION_ALT;
-    R16_PA_INT_IF = PIN_MS_MOTION_ALT;
+    R16_PA_INT_EN &= ~BOARD_PAW_MOTION_ALT_PIN;
+    R16_PA_INT_IF = BOARD_PAW_MOTION_ALT_PIN;
 }
 
 void paw3395_motion_read(int16_t *dx, int16_t *dy) {
@@ -163,13 +157,13 @@ void paw3395_motion_read(int16_t *dx, int16_t *dy) {
 }
 
 bool paw3395_port_init(struct paw3395_dev *dev) {
-    GPIOA_SetBits(PIN_MS_SCLK | PIN_MS_MOSI | PIN_MS_CS);
-    GPIOA_ModeCfg(PIN_MS_SCLK | PIN_MS_MOSI | PIN_MS_CS, GPIO_ModeOut_PP_5mA);
-    GPIOA_ModeCfg(PIN_MS_MISO, GPIO_ModeIN_Floating);
-    GPIOB_SetBits(PIN_MS_RST);
-    GPIOB_ModeCfg(PIN_MS_RST, GPIO_ModeOut_PP_5mA);
-    GPIOB_ModeCfg(PIN_MS_MOTION, GPIO_ModeIN_Floating);
-    GPIOA_ModeCfg(PIN_MS_MOTION_ALT, GPIO_ModeIN_PU);
+    GPIOA_SetBits(BOARD_PAW_SCLK_PIN | BOARD_PAW_MOSI_PIN | BOARD_PAW_CS_PIN);
+    GPIOA_ModeCfg(BOARD_PAW_SCLK_PIN | BOARD_PAW_MOSI_PIN | BOARD_PAW_CS_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOA_ModeCfg(BOARD_PAW_MISO_PIN, GPIO_ModeIN_Floating);
+    GPIOB_SetBits(BOARD_PAW_RST_PIN);
+    GPIOB_ModeCfg(BOARD_PAW_RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(BOARD_PAW_MOTION_PIN, GPIO_ModeIN_Floating);
+    GPIOA_ModeCfg(BOARD_PAW_MOTION_ALT_PIN, GPIO_ModeIN_PU);
 
     SPI0_MasterDefInit();
     SPI0_DataMode(Mode0_HighBitINFront);
@@ -179,9 +173,9 @@ bool paw3395_port_init(struct paw3395_dev *dev) {
     dev->write = paw3395_spi_write;
     dev->delay_us = paw3395_delay_us;
 
-    GPIOB_ResetBits(PIN_MS_RST);
+    GPIOB_ResetBits(BOARD_PAW_RST_PIN);
     mDelaymS(10);
-    GPIOB_SetBits(PIN_MS_RST);
+    GPIOB_SetBits(BOARD_PAW_RST_PIN);
 
     /* Module boot time. */
     mDelaymS(50);

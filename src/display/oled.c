@@ -11,14 +11,13 @@
 #include <stdio.h>
 
 #include "CH58x_common.h"
+#include "board.h"
 #include "bat.h"
 #include "driver_ssd1315.h"
 #include "driver_ssd1315_interface.h"
 #include "i2c_bus.h"
 #include "log.h"
 
-#define OLED_EN_PIN         GPIO_Pin_3            /* PB3,  panel rail switch */
-#define OLED_RST_PIN        GPIO_Pin_16           /* PB16, active low        */
 #define OLED_IIC_ADDR       SSD1315_ADDR_SA0_0    /* SA0 low -> write 0x3C   */
 #define OLED_IIC_ADDR_7BIT  0x3Cu                 /* the 7-bit form our bus takes */
 
@@ -49,22 +48,22 @@ static bool             s_enabled;   /* rail powered and initialised */
 
 static void oled_rail(bool on)
 {
-    GPIOB_ModeCfg(OLED_EN_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(BOARD_OLED_EN_PIN, GPIO_ModeOut_PP_5mA);
 
     if (on) {
-        GPIOB_SetBits(OLED_EN_PIN);
+        GPIOB_SetBits(BOARD_OLED_EN_PIN);
     } else {
-        GPIOB_ResetBits(OLED_EN_PIN);
+        GPIOB_ResetBits(BOARD_OLED_EN_PIN);
     }
 }
 
 static void oled_reset(void)
 {
-    GPIOB_ModeCfg(OLED_RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(BOARD_OLED_RST_PIN, GPIO_ModeOut_PP_5mA);
 
-    GPIOB_ResetBits(OLED_RST_PIN);   /* assert  */
+    GPIOB_ResetBits(BOARD_OLED_RST_PIN);   /* assert  */
     mDelaymS(20);
-    GPIOB_SetBits(OLED_RST_PIN);     /* release */
+    GPIOB_SetBits(BOARD_OLED_RST_PIN);     /* release */
     mDelaymS(20);
 }
 
@@ -150,8 +149,8 @@ bool oled_set_enable(bool on)
      * whole bring-up; hold reset low meanwhile so the I/O pins cannot feed it. */
     s_enabled = false;
     s_ready   = false;
-    GPIOB_ModeCfg(OLED_RST_PIN, GPIO_ModeOut_PP_5mA);
-    GPIOB_ResetBits(OLED_RST_PIN);
+    GPIOB_ModeCfg(BOARD_OLED_RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ResetBits(BOARD_OLED_RST_PIN);
     oled_rail(false);
     return false;
 }

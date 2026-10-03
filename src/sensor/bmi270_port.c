@@ -2,17 +2,12 @@
 #include <stdint.h>
 #include "CH58x_common.h"
 #include "CH58x_gpio.h"
+#include "board.h"
 #include "bmi270.h"
 #include "bmi2_defs.h"
 
-#define PIN_IMU_SCLK GPIO_Pin_0
-#define PIN_IMU_MOSI GPIO_Pin_1
-#define PIN_IMU_MISO GPIO_Pin_2
-#define PIN_IMU_CS   GPIO_Pin_10
-#define PIN_IMU_INT  GPIO_Pin_6
-
-static inline void cs_low(void)  { GPIOA_ResetBits(PIN_IMU_CS); }
-static inline void cs_high(void) { GPIOA_SetBits(PIN_IMU_CS); }
+static inline void cs_low(void)  { GPIOA_ResetBits(BOARD_IMU_CS_PIN); }
+static inline void cs_high(void) { GPIOA_SetBits(BOARD_IMU_CS_PIN); }
 
 #define SPI_READ_BIT   0x80u
 #define SPI_WRITE_MASK 0x7Fu
@@ -38,10 +33,10 @@ static void bmi270_delay_us(uint32_t period, void *intf_ptr) {
 }
 
 int8_t bmi270_port_init(struct bmi2_dev *bmi) {
-    GPIOA_SetBits(PIN_IMU_SCLK | PIN_IMU_MOSI | PIN_IMU_CS);
-    GPIOA_ModeCfg(PIN_IMU_SCLK | PIN_IMU_MOSI | PIN_IMU_CS, GPIO_ModeOut_PP_5mA);
-    GPIOA_ModeCfg(PIN_IMU_MISO, GPIO_ModeIN_Floating);
-    GPIOA_ModeCfg(PIN_IMU_INT,  GPIO_ModeIN_Floating);
+    GPIOA_SetBits(BOARD_IMU_SCLK_PIN | BOARD_IMU_MOSI_PIN | BOARD_IMU_CS_PIN);
+    GPIOA_ModeCfg(BOARD_IMU_SCLK_PIN | BOARD_IMU_MOSI_PIN | BOARD_IMU_CS_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOA_ModeCfg(BOARD_IMU_MISO_PIN, GPIO_ModeIN_Floating);
+    GPIOA_ModeCfg(BOARD_IMU_INT_PIN,  GPIO_ModeIN_Floating);
 
     SPI1_MasterDefInit();
     SPI1_DataMode(Mode0_HighBitINFront);

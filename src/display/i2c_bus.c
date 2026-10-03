@@ -13,6 +13,7 @@
 #include <stddef.h>
 
 #include "CH58x_common.h"
+#include "board.h"
 #include "log.h"
 
 /* 400 kHz fast mode: SDA/SCL carry external 4.7 kOhm pull-ups to 3.3 V, so
@@ -58,7 +59,7 @@ void i2c_bus_init(void)
 {
     /* SCL_/SDA_ on PB21/PB20 instead of the default PB13/PB12 (USB HS). */
     GPIOPinRemap(ENABLE, RB_PIN_I2C);
-    GPIOB_ModeCfg(GPIO_Pin_20 | GPIO_Pin_21, GPIO_ModeIN_PU);
+    GPIOB_ModeCfg(BOARD_I2C_SDA_PIN | BOARD_I2C_SCL_PIN, GPIO_ModeIN_PU);
 
     I2C_Init(I2C_Mode_I2C, I2C_CLOCK_HZ, I2C_DutyCycle_16_9,
              I2C_Ack_Enable, I2C_AckAddr_7bit, I2C_OWN_ADDR);

@@ -24,12 +24,10 @@
  *********************************************************************************/
 #include "rgb.h"
 #include "CH58x_common.h"
+#include "board.h"
 
 #include <stddef.h>
 #include <string.h>
-
-#define RGB_DIN_PIN     GPIO_Pin_10   /* PB10 = TIM1_CH1_ after remap       */
-#define RGB_EN_PIN      GPIO_Pin_2    /* PB2  power/standby                 */
 
 #define RGB_PERIOD           100U    /* T_period ~ 1.60 us                  */
 #define RGB_CCR_0             22U    /* T0H ~ 352 ns                        */
@@ -90,9 +88,9 @@ void rgb_init(void)
     }
 
     /* Configure the data pin for the timer to drive; enable the rail. */
-    GPIOB_ModeCfg(RGB_DIN_PIN, GPIO_ModeOut_PP_5mA);
-    GPIOB_ModeCfg(RGB_EN_PIN,  GPIO_ModeOut_PP_5mA);
-    GPIOB_SetBits(RGB_EN_PIN);
+    GPIOB_ModeCfg(BOARD_RGB_DIN_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(BOARD_RGB_EN_PIN,  GPIO_ModeOut_PP_5mA);
+    GPIOB_SetBits(BOARD_RGB_EN_PIN);
     s_rail_on = true;
 
     memset(s_color, 0, sizeof(s_color));
@@ -127,7 +125,7 @@ void rgb_off(void)
 void rgb_set_enable(bool on)
 {
     if (on) {
-        GPIOB_SetBits(RGB_EN_PIN);
+        GPIOB_SetBits(BOARD_RGB_EN_PIN);
         /* Re-arm the frame DMA so the chain is clocked again. */
         TMR1_DMACfg(ENABLE,
                     (uint32_t)s_bitbuf,
@@ -160,7 +158,7 @@ void rgb_set_enable(bool on)
         TMR1_PWMActDataWidth(0u);
         s_dirty   = false;
         s_rail_on = false;
-        GPIOB_ResetBits(RGB_EN_PIN);
+        GPIOB_ResetBits(BOARD_RGB_EN_PIN);
     }
 }
 
