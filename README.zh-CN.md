@@ -61,6 +61,7 @@ Startup/ RVMSIS/   厂商启动汇编与类 CMSIS 头（请勿修改）
 Ld/Link.ld         自定义链接脚本
 docs/              datasheet + io.csv 引脚映射（docs/CH585EVT 下 75 MB 的厂商 SDK 仅本地保留）
 scripts/           主机工具 (mouse_proto.py)、MounRiver 刷写助手、udev 规则
+host/              Tauri 上位机：HID 配置/状态 + BIO 实时监视
 ```
 
 ## 快速开始
@@ -146,6 +147,28 @@ scripts/mouse_proto.py --dongle info
 `rate`、`bio-acq`、`bio-sleep`、`periph`、`motor`、`motor-en`、`raw`。
 鼠标运行 RF 时这些读写命令同样可用：dongle 转发请求，并把应答搭载在鼠标自己的帧里
 带回。
+
+## 上位机（`host/`）
+
+Tauri v2 + React/TypeScript 桌面客户端，使用与 CLI 相同的 HID **Feature** 通道，
+因此可配置有线鼠标（product id `0xFE0C`）或经 dongle 无线的鼠标（`0xFE0D`）：
+覆盖全部 get/set 命令 + 状态仪表盘（固件版本、当前电台、电量、能力位图）。另含
+**BIO 实时监视**：从有线鼠标的 USB CDC 串口读取 `JFC103` 88 字节实时包，绘制心率
+波形与各项指标——dongle 无 CDC，故 BIO 仅在有线下可用。
+
+```sh
+# Fedora 系统依赖（Tauri v2，外加提供 libudev 的 systemd-devel）
+sudo dnf install webkit2gtk4.1-devel libsoup3-devel gtk3-devel \
+                 openssl-devel librsvg2-devel systemd-devel
+
+cd host
+pnpm install
+pnpm tauri dev       # 运行
+pnpm tauri build     # 打包
+```
+
+hidraw 访问沿用与 CLI 相同的 udev 规则。CI（`.github/workflows/host.yml`）会构建
+Linux `.deb` 与 Windows 安装包（`.exe`）作为制品。详见 [`host/README.md`](host/README.md)。
 
 ## 架构
 

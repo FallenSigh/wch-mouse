@@ -50,13 +50,15 @@ Tauri v2 needs the WebKitGTK 4.1 / GTK3 / libsoup3 development packages:
 
 ```sh
 sudo dnf install webkit2gtk4.1-devel libsoup3-devel gtk3-devel \
-                 openssl-devel curl wget file librsvg2-devel
+                 openssl-devel librsvg2-devel systemd-devel
 sudo dnf group install "C Development Tools and Libraries"
 ```
 
-You also need the Rust toolchain (1.77+) and Node 22 + pnpm 10. The hidapi
-crate uses its **default static hidraw** backend on Linux, so no libusb package
-is required; a C compiler (already installed above) builds the bundled library.
+`systemd-devel` provides libudev, which the serialport crate uses to enumerate
+USB serial ports. You also need the Rust toolchain (1.77+) and Node 22 + pnpm 10.
+The hidapi crate uses its **default static hidraw** backend on Linux, so no
+libusb package is required; a C compiler (already installed above) builds the
+bundled library.
 On Windows and macOS the same crate resolves to the native HID backends
 (`hid.dll` / IOKit) with no extra setup.
 

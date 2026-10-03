@@ -63,6 +63,7 @@ Startup/ RVMSIS/   vendor startup assembly and CMSIS-like headers (do not edit)
 Ld/Link.ld         custom linker script
 docs/              datasheets + io.csv pin map (the 75 MB vendor SDK under docs/CH585EVT is local-only)
 scripts/           host tooling (mouse_proto.py), MounRiver flash helper, udev rule
+host/              Tauri desktop app: HID config/status + BIO live monitor
 ```
 
 ## Getting started
@@ -151,6 +152,31 @@ Run `scripts/mouse_proto.py --help` for the full list: `version`, `info`,
 `oled`, `rate`, `bio-acq`, `bio-sleep`, `periph`, `motor`, `motor-en` and
 `raw`. The get/set commands work while the mouse runs RF: the dongle relays the
 request and carries the answer back in the mouse's own frames.
+
+## Desktop app (`host/`)
+
+A Tauri v2 + React/TypeScript desktop client that speaks the same HID
+**Feature** channel as the CLI, so it configures the mouse wired (product id
+`0xFE0C`) or wirelessly through the dongle (`0xFE0D`): every get/set command
+plus a status dashboard (firmware version, active radio, battery, capabilities).
+It also has a **BIO live monitor** that reads the `JFC103` 88-byte real-time
+packets off the wired mouse's USB CDC serial port and draws the heart-rate
+waveform and metrics — the dongle exposes no CDC, so BIO is wired-only.
+
+```sh
+# Fedora system deps (Tauri v2, plus systemd-devel which provides libudev)
+sudo dnf install webkit2gtk4.1-devel libsoup3-devel gtk3-devel \
+                 openssl-devel librsvg2-devel systemd-devel
+
+cd host
+pnpm install
+pnpm tauri dev       # run
+pnpm tauri build     # bundle
+```
+
+The same udev rule as the CLI grants access to the hidraw node. CI
+(`.github/workflows/host.yml`) builds a Linux `.deb` and a Windows installer
+(`.exe`) as artifacts. Details: [`host/README.md`](host/README.md).
 
 ## Architecture
 
