@@ -13,9 +13,7 @@ cmake --build build --target wch-mouse     # or just one
 cmake --build build --target wch-dongle
 ```
 
-- Two presets for the mouse: `wch` = **RF** (`WCH_RF_ENABLE=ON`) and `tri` = **dual radio** (`WCH_BLE_ENABLE=ON` + `WCH_RF_ENABLE=ON`, output `build-tri/`). The dongle is always RF.
-- A preset's `cacheVariables` only apply when its build dir is **created**; an already-configured dir keeps its own cache and `cmake --preset` will not change it (see the cache trap below). Pass `-D` explicitly to re-target an existing dir.
-- The mouse's variant (USB-only / BLE / RF / dual) is a cache option, so build another variant through its own build dir, e.g. `cmake -B /tmp/ble -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/riscv-wch-toolchain.cmake -DWCH_BLE_ENABLE=ON`.
+- One preset (`wch` -> `build/`); the dongle is always RF.
 - Toolchain discovery order: `$WCH_TOOLCHAIN_ROOT` -> `/opt/wch/riscv-wch-gcc15` -> `~/MounRiver/...`. Override with `-DWCH_TOOLCHAIN_ROOT=/path`.
 - `compile_commands.json` is a **symlink to `build/`** and `.clangd` reads `build/`; run the configure step before expecting LSP/clangd to work on `src/`.
 - Flashing uses external tools and is **not** part of the default build. The mouse owns the unsuffixed names, the dongle's are suffixed `-dongle`:
@@ -24,12 +22,12 @@ cmake --build build --target wch-dongle
   - `cmake --build build --target flash-mrs` / `flash-mrs-dongle` — MounRiver `libmcuupdate.so` via `scripts/mrs_flash.py`; works even when the two-wire debug interface is closed. Needs `WCH_COMMUNICATION_LIB_DIR` or auto-discovery.
 - The mouse can reach the ROM ISP bootloader **without a power cycle**: hold the BOOT strap (PB22) for 3 s while USB is attached (`src/app/isp.c`). The ROM picks ISP over the application by checking whether CodeFlash starts with a program, so this erases block 0 and resets — the firmware does not survive and a download must follow, but the DataFlash record (radio mode, settings) does. Gated on VBUS so a press on battery cannot wipe the image; the dongle has no button and keeps the power-cycle flow.
 
-### CMake cache trap (read before toggling options)
-
-`WCH_BLE_ENABLE` / `WCH_RF_ENABLE` / `WCH_DCDC_ENABLE` are cache variables, so a build dir remembers what it was configured with. Never toggle a variant inside the shared `build/` — point a throwaway build dir at the flag instead. BLE and RF share the radio: never enable both.
-
-- `WCH_DCDC_ENABLE=ON` requires the 10 µH inductor between VSW and VDCID on the board; set OFF for boards that strap VSW to VDCID.
-- Other compile-time knobs: `-DWCH_DEBUG_UART=1` (printf retarget UART 0–3), `-DWCH_LOG_LEVEL=LOG_LVL_DEBUG`.
+- Configuration options:
+  - `WCH_BLE_ENABLE` — BLE peripheral transport.
+  - `WCH_RF_ENABLE` — 2.4G RF transport; shares the single radio with BLE.
+  - `WCH_DCDC_ENABLE` — internal DC-DC; requires the 10 µH inductor between VSW and VDCID, OFF for boards that strap VSW to VDCID.
+  - `WCH_DEBUG_UART=1` — printf retarget UART 0–3.
+  - `WCH_LOG_LEVEL=LOG_LVL_DEBUG` — log verbosity.
 
 ## Layout & boundaries
 
