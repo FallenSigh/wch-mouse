@@ -1,10 +1,7 @@
 #include "bat.h"
 #include "CH58x_common.h"
+#include "board.h"
 #include "log.h"
-
-#define PIN_BAT_PGOOD   GPIO_Pin_6
-#define PIN_BAT_CHG     GPIO_Pin_5
-#define PIN_BAT_VOL     GPIO_Pin_3
 
 #define BAT_ADC_CH      CH_EXTIN_6      /* PA3 = AIN6 */
 #define BAT_ADC_GAIN    ADC_PGA_0       /* 0 dB single-ended range is 0..2.1 V */
@@ -66,13 +63,13 @@ static uint16_t bat_adc_sample(void)
 
 void bat_init(void)
 {
-    GPIOB_ModeCfg(PIN_BAT_PGOOD | PIN_BAT_CHG, GPIO_ModeIN_PU);
-    s_pgood    = GPIOB_ReadPortPin(PIN_BAT_PGOOD) ? 0u : 1u;
-    s_charging = GPIOB_ReadPortPin(PIN_BAT_CHG) ? 0u : 1u;
+    GPIOB_ModeCfg(BOARD_BAT_PGOOD_PIN | BOARD_BAT_CHG_PIN, GPIO_ModeIN_PU);
+    s_pgood    = GPIOB_ReadPortPin(BOARD_BAT_PGOOD_PIN) ? 0u : 1u;
+    s_charging = GPIOB_ReadPortPin(BOARD_BAT_CHG_PIN) ? 0u : 1u;
     s_chg_prev = s_charging;
 
-    GPIOA_ModeCfg(PIN_BAT_VOL, GPIO_ModeIN_Floating);
-    GPIOADigitalCfg(DISABLE, PIN_BAT_VOL);
+    GPIOA_ModeCfg(BOARD_BAT_VOL_PIN, GPIO_ModeIN_Floating);
+    GPIOADigitalCfg(DISABLE, BOARD_BAT_VOL_PIN);
 
     ADC_ChannelCfg(BAT_ADC_CH);
     ADC_ExtSingleChSampInit(SampleFreq_8_or_4, BAT_ADC_GAIN);
@@ -90,7 +87,7 @@ void bat_poll(uint32_t now_ms)
 {
     /* Ahead of the 1 s gate: this is the one signal the policy, the standby
      * guard and usb_ready() all hang off. */
-    const uint8_t pgood = GPIOB_ReadPortPin(PIN_BAT_PGOOD) ? 0u : 1u;
+    const uint8_t pgood = GPIOB_ReadPortPin(BOARD_BAT_PGOOD_PIN) ? 0u : 1u;
 
     if (pgood != s_pgood_raw) {
         s_pgood_raw    = pgood;
@@ -105,7 +102,7 @@ void bat_poll(uint32_t now_ms)
     }
     s_last_poll_ms = now_ms;
 
-    uint8_t chg = GPIOB_ReadPortPin(PIN_BAT_CHG) ? 0u : 1u;
+    uint8_t chg = GPIOB_ReadPortPin(BOARD_BAT_CHG_PIN) ? 0u : 1u;
     if (chg != s_chg_prev) {
         s_chg_prev = chg;
         if (s_edge_count < 0xFFu) {

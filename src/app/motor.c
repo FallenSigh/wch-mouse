@@ -15,13 +15,14 @@
  *********************************************************************************/
 #include "motor.h"
 #include "CH58x_common.h"
+#include "board.h"
 
 void motor_init(void)
 {
     /* Latch low first so configuring the pin as an output cannot glitch the
      * motor on. */
-    GPIOB_ResetBits(GPIO_Pin_0);
-    GPIOB_ModeCfg(GPIO_Pin_0, GPIO_ModeOut_PP_5mA);
+    GPIOB_ResetBits(BOARD_MOTOR_PIN);
+    GPIOB_ModeCfg(BOARD_MOTOR_PIN, GPIO_ModeOut_PP_5mA);
 }
 
 /* Counted down rather than compared against a deadline, so starting a pulse
@@ -49,14 +50,14 @@ void motor_on(void)
     if (!s_enabled) {
         return;
     }
-    GPIOB_SetBits(GPIO_Pin_0);
+    GPIOB_SetBits(BOARD_MOTOR_PIN);
 }
 
 void motor_off(void)
 {
     s_running  = false;
     s_left_ms  = 0u;
-    GPIOB_ResetBits(GPIO_Pin_0);
+    GPIOB_ResetBits(BOARD_MOTOR_PIN);
 }
 
 void motor_pulse(uint32_t ms)

@@ -10,12 +10,11 @@
 #include "bio.h"
 
 #include "CH58x_common.h"
+#include "board.h"
 
 /* The real-time packet is exactly 88 bytes on the wire; fail the build if the
  * struct ever drifts from the spec. */
 typedef char bio_rt_pack_size_check[(sizeof(bio_rt_pack_t) == 88u) ? 1 : -1];
-
-#define BIO_RST_PIN   GPIO_Pin_11
 
 /* Mode command bytes on the UART3 link. */
 #define BIO_CMD_MEASURE_ON    0x8Au
@@ -28,14 +27,14 @@ typedef char bio_rt_pack_size_check[(sizeof(bio_rt_pack_t) == 88u) ? 1 : -1];
 
 void bio_init(void)
 {
-    GPIOA_ModeCfg(BIO_RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOA_ModeCfg(BOARD_BIO_RST_PIN, GPIO_ModeOut_PP_5mA);
 }
 
 void bio_reset(void)
 {
-    GPIOA_ResetBits(BIO_RST_PIN);   /* assert reset */
+    GPIOA_ResetBits(BOARD_BIO_RST_PIN);   /* assert reset */
     mDelaymS(20);
-    GPIOA_SetBits(BIO_RST_PIN);     /* release reset */
+    GPIOA_SetBits(BOARD_BIO_RST_PIN);     /* release reset */
     mDelaymS(100);                  /* module boot time */
 }
 

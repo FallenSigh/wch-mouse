@@ -18,11 +18,11 @@
 #include <stdbool.h>
 
 #include "CH58x_common.h"
+#include "board.h"
 #include "ISP585.h"
 #include "bat.h"
 #include "log.h"
 
-#define ISP_BTN_PIN      GPIO_Pin_22
 #define ISP_BTN_HOLD_MS  3000u
 
 static uint32_t s_btn_ms;
@@ -58,7 +58,7 @@ static void isp_enter(void)
 
 void isp_init(void)
 {
-    GPIOB_ModeCfg(ISP_BTN_PIN, GPIO_ModeIN_PU);
+    GPIOB_ModeCfg(BOARD_ISP_BTN_PIN, GPIO_ModeIN_PU);
 }
 
 void isp_poll(uint32_t now_ms)
@@ -72,7 +72,7 @@ void isp_poll(uint32_t now_ms)
         return;
     }
 
-    pressed = (GPIOB_ReadPortPin(ISP_BTN_PIN) == 0u);
+    pressed = (GPIOB_ReadPortPin(BOARD_ISP_BTN_PIN) == 0u);
 
     if (pressed != s_btn_held) {
         s_btn_held = pressed;
