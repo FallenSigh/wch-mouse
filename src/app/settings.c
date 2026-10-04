@@ -419,14 +419,6 @@ void settings_set_motor_enable(uint8_t on) {
     settings_dirty();
 }
 
-bool settings_periph_on_battery(void) {
-    return s_cur.periph_batt != 0u;
-}
-
-bool settings_periph_any_enabled(void) {
-    return (s_cur.oled_enable != 0u) || (s_cur.bio_acquire != 0u) || (s_cur.rgb_enable != 0u);
-}
-
 /* Pick the supported rate closest to the request, so the host can send any Hz. */
 static uint8_t settings_rate_idx_for(uint16_t hz) {
     uint8_t best = 0u;

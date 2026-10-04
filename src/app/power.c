@@ -153,6 +153,10 @@ static void standby_restore(void) {
      * collide with a burst on the shared SPI bus. */
     settings_apply();
 
+    /* The park cut the panel, the rail and the BIO module; bring back whatever
+     * the cable/periph_batt policy wants on. */
+    settings_apply_peripherals();
+
     /* The park cleared the ADC's power bit, so the battery gauge has to be
      * re-armed before bat_poll() samples it again. */
     bat_init();
@@ -187,14 +191,6 @@ bool power_poll(uint32_t now_ms) {
     /* Air-mouse mode stops the PA7 interrupt and reads the gyro instead, so
      * there would be nothing left to wake on. */
     if (air_mouse_active()) {
-        power_note_activity(now_ms);
-        return false;
-    }
-
-    /* The peripherals policy can keep the panel, the rail and the BIO module
-     * live on battery, and standby_park() assumes they are already dark - do
-     * not sleep with them up. */
-    if (settings_periph_on_battery() && settings_periph_any_enabled()) {
         power_note_activity(now_ms);
         return false;
     }

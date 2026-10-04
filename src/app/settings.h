@@ -45,8 +45,6 @@ void settings_set_oled(uint8_t on);
 
 /* Let the panel, the LED rail and the BIO module run on battery too. */
 void settings_set_periph_batt(uint8_t on);
-bool settings_periph_on_battery(void);
-bool settings_periph_any_enabled(void);
 
 /* Report rate, one per link. Each is set and persisted independently, so
  * switching radio modes keeps every link's own rate. The unsuffixed pair
