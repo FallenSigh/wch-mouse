@@ -7,6 +7,7 @@
       "displayName": "WCH CH585 RISC-V",
       "description": "Cross build for the WCH CH585 using the MounRiver/WCH GCC toolchain",
       "binaryDir": "${sourceDir}/build",
+      "generator": "Ninja",
       "toolchainFile": "${sourceDir}/cmake/riscv-wch-toolchain.cmake",
       "cacheVariables": {
         "WCH_DEBUG_UART": "1",
