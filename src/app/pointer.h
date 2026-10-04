@@ -102,7 +102,7 @@ void pointer_rebase(pointer_t *p);
 /* Feed one attitude sample. `raw_buttons` is the undebounced mask (so the guard
  * freezes on the press edge). Writes the relative counts for this sample, which
  * are zero while the guard or the entry re-base is in effect. */
-void pointer_update(pointer_t *p, float roll_deg, float yaw_deg, float pitch_deg,
-                    uint8_t raw_buttons, uint32_t now_ms, float dt, int16_t *dx, int16_t *dy);
+void pointer_update(pointer_t *p, float yaw_deg, float pitch_deg, uint8_t raw_buttons,
+                    uint32_t now_ms, float dt, int16_t *dx, int16_t *dy);
 
 #endif /* __POINTER_H__ */

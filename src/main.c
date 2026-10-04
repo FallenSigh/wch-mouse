@@ -38,6 +38,10 @@
 #define TICK_HZ_FAST 8000u
 #define TICK_HZ_SLOW 1000u
 
+/* The air-mouse gyro pipeline's soft-float cost must not starve the BLE stack's
+ * main-loop servicing; USB and RF tolerate the full rate. */
+#define AIR_MOUSE_BLE_CAP_HZ 200u
+
 static volatile uint32_t s_tick;    /* s_tick_hz units */
 static volatile uint32_t s_tick_ms; /* milliseconds    */
 static volatile uint32_t s_ticks_per_ms;
@@ -266,6 +270,7 @@ int main() {
         const transport_id_t link = transport_router_active();
 
         tick_set_rate((link == TR_BLE) ? TICK_HZ_SLOW : TICK_HZ_FAST);
+        air_mouse_set_proc_cap_hz((link == TR_BLE) ? AIR_MOUSE_BLE_CAP_HZ : 0u);
 
         {
             static uint32_t last_report_tick;

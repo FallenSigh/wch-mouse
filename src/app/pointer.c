@@ -101,8 +101,8 @@ void pointer_rebase(pointer_t *p) {
     p->neutral_pending = true;
 }
 
-void pointer_update(pointer_t *p, float roll_deg, float yaw_deg, float pitch_deg,
-                    uint8_t raw_buttons, uint32_t now_ms, float dt, int16_t *dx, int16_t *dy) {
+void pointer_update(pointer_t *p, float yaw_deg, float pitch_deg, uint8_t raw_buttons,
+                    uint32_t now_ms, float dt, int16_t *dx, int16_t *dy) {
     *dx = 0;
     *dy = 0;
     p->now_ms = now_ms;

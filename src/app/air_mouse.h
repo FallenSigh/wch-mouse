@@ -48,6 +48,10 @@ uint8_t air_mouse_odr_count(void);
 void air_mouse_set_sensitivity(uint8_t idx);
 void air_mouse_set_odr(uint8_t idx);
 
+/* Ceiling on how often the gyro pipeline runs (0 = uncapped). The caller lowers
+ * it for a link that cannot spare the main-loop time (BLE). */
+void air_mouse_set_proc_cap_hz(uint16_t hz);
+
 /* Call once per scan. `buttons` is the debounced bitmap (side-1 + side-2 hold
  * switches the mode at the 2 s mark); `raw_buttons` is the undebounced bitmap,
  * used so the click guard freezes the pointer on the press edge. */

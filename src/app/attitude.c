@@ -94,10 +94,9 @@ void attitude_reset(attitude_t *a) {
     a->ready = false;
 
     a->cont_ready = false;
-    a->last_roll = 0.0f;
     a->last_yaw = 0.0f;
-    a->roll_cont = 0.0f;
     a->yaw_cont = 0.0f;
+    a->pitch_cur = 0.0f;
 }
 
 void attitude_begin_calibration(attitude_t *a, uint8_t warmup, uint8_t samples) {
@@ -228,20 +227,17 @@ static void att_mahony(attitude_t *a, float gx, float gy, float gz, float ax, fl
 }
 
 static void att_update_continuous(attitude_t *a) {
-    const float roll = att_raw_roll(a);
     const float yaw = att_raw_yaw(a);
 
     if (!a->cont_ready) {
-        a->roll_cont = roll;
         a->yaw_cont = yaw;
         a->cont_ready = true;
     } else {
-        a->roll_cont += att_wrap180(roll - a->last_roll);
         a->yaw_cont += att_wrap180(yaw - a->last_yaw);
     }
 
-    a->last_roll = roll;
     a->last_yaw = yaw;
+    a->pitch_cur = att_raw_pitch(a);
 }
 
 bool attitude_update(attitude_t *a, float gx, float gy, float gz, float ax, float ay, float az,
@@ -280,15 +276,20 @@ bool attitude_update(attitude_t *a, float gx, float gy, float gz, float ax, floa
 }
 
 float attitude_roll_deg(const attitude_t *a) {
-    return a->roll_cont;
+    return att_raw_roll(a);
 }
 
 float attitude_pitch_deg(const attitude_t *a) {
-    return att_raw_pitch(a);
+    return a->pitch_cur;
 }
 
 float attitude_yaw_deg(const attitude_t *a) {
     return a->yaw_cont;
+}
+
+void attitude_yaw_pitch_deg(const attitude_t *a, float *yaw_deg, float *pitch_deg) {
+    *yaw_deg = a->yaw_cont;
+    *pitch_deg = a->pitch_cur;
 }
 
 void attitude_get_bias(const attitude_t *a, float *bx, float *by, float *bz) {

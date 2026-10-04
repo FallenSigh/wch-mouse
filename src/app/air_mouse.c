@@ -29,6 +29,13 @@
 /* Side-1 (PR_SW4/BACK) + side-2 (PR_SW5/FWD) held this long enter/leave. */
 #define AIR_MOUSE_HOLD_MS 2000u
 
+/* Rate ceiling for the attitude/pointer work (0 = uncapped), set per transport
+ * by the caller. At a high gyro ODR the filter's soft-float transcendentals
+ * (atan2f/sqrtf/asinf) run once per scan and can starve the shared main loop -
+ * enough to drop the BLE link. The filter step still uses the real sensor-time
+ * delta, so a skipped interval is integrated on the next step. */
+static uint32_t s_proc_min_ms;
+
 /* Gyro samples averaged into the zero-bias at entry, after the start-up samples
  * below are discarded. At 200 Hz, 16 samples is 80 ms of "hold still"; motion
  * reporting starts once the bias is known. */
@@ -87,6 +94,7 @@ static bool s_was_ready;
  * step instead of the nominal 5 ms. */
 static uint32_t s_last_st;
 static bool s_have_st;
+static uint32_t s_last_proc_ms;
 
 static void air_mouse_imu_on(void) {
     struct bmi2_sens_config cfg[2] = {0};
@@ -170,6 +178,16 @@ void air_mouse_set_odr(uint8_t idx) {
     }
 }
 
+void air_mouse_set_proc_cap_hz(uint16_t hz) {
+    if (hz == 0u) {
+        s_proc_min_ms = 0u;
+    } else if (hz >= 1000u) {
+        s_proc_min_ms = 1u;
+    } else {
+        s_proc_min_ms = 1000u / hz;
+    }
+}
+
 static void air_mouse_enter(uint32_t now_ms) {
     /* Fire the feedback first and do not wait for it: the hand-off below blocks
      * for tens of ms, so a blocking buzz would only start afterwards. */
@@ -190,6 +208,7 @@ static void air_mouse_enter(uint32_t now_ms) {
     pointer_set_sensitivity(&s_ptr, (float)s_sens_x[s_sens_idx], (float)s_sens_y[s_sens_idx]);
 
     s_have_st = false;
+    s_last_proc_ms = now_ms - s_proc_min_ms;
     s_was_ready = false;
     s_active = true;
 
@@ -224,6 +243,8 @@ static void air_mouse_exit(uint32_t now_ms) {
 void air_mouse_init(const air_mouse_cfg_t *cfg) {
     s_cfg = *cfg;
     s_active = false;
+    s_last_proc_ms = 0u;
+    s_proc_min_ms = 0u;
     s_combo_held = false;
     s_combo_armed = false;
     motor_off();
@@ -290,6 +311,12 @@ void air_mouse_read_motion(int16_t *dx, int16_t *dy) {
     *dx = 0;
     *dy = 0;
 
+    /* Rate-limit the soft-float filter so it cannot starve the main loop. */
+    if (s_proc_min_ms != 0u && (uint32_t)(s_now_ms - s_last_proc_ms) < s_proc_min_ms) {
+        return;
+    }
+    s_last_proc_ms = s_now_ms;
+
     if (bmi2_get_sensor_data(&d, s_cfg.bmi) != BMI2_OK) {
         return;
     }
@@ -319,6 +346,9 @@ void air_mouse_read_motion(int16_t *dx, int16_t *dy) {
         pointer_rebase(&s_ptr);
     }
 
-    pointer_update(&s_ptr, attitude_roll_deg(&s_att), attitude_yaw_deg(&s_att),
-                   attitude_pitch_deg(&s_att), s_raw_buttons, s_now_ms, dt, dx, dy);
+    float yaw_deg;
+    float pitch_deg;
+
+    attitude_yaw_pitch_deg(&s_att, &yaw_deg, &pitch_deg);
+    pointer_update(&s_ptr, yaw_deg, pitch_deg, s_raw_buttons, s_now_ms, dt, dx, dy);
 }

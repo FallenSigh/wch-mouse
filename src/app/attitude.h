@@ -59,10 +59,12 @@ typedef struct {
     float calib_ax, calib_ay, calib_az;
     bool ready;
 
-    /* continuous euler */
+    /* euler output: yaw is continuous (unwrapped), pitch instantaneous. Roll is
+     * not used by the pointer, so it stays out of the per-sample path. */
     bool cont_ready;
-    float last_roll, last_yaw;
-    float roll_cont, yaw_cont;
+    float last_yaw;
+    float yaw_cont;
+    float pitch_cur;
 } attitude_t;
 
 /* Copy the configuration and clear all runtime state. */
@@ -85,10 +87,16 @@ bool attitude_ready(const attitude_t *a);
 bool attitude_update(attitude_t *a, float gx, float gy, float gz, float ax, float ay, float az,
                      float dt);
 
-/* Continuous (unwrapped) roll and yaw, instantaneous pitch, in degrees. */
+/* Euler output in degrees: yaw is continuous (unwrapped), pitch is the
+ * instantaneous value, and roll is computed on demand (the pointer does not use
+ * it, so it stays out of the per-sample path). */
 float attitude_roll_deg(const attitude_t *a);
 float attitude_pitch_deg(const attitude_t *a);
 float attitude_yaw_deg(const attitude_t *a);
+
+/* The pointer's two axes, read together. Pitch in particular is converted once
+ * per sample here rather than on demand. */
+void attitude_yaw_pitch_deg(const attitude_t *a, float *yaw_deg, float *pitch_deg);
 
 /* Current gyro bias estimate, deg/s. */
 void attitude_get_bias(const attitude_t *a, float *bx, float *by, float *bz);
