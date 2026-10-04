@@ -9,6 +9,12 @@
  * possible host enumerate, even while a radio link owns the mouse. */
 #define USB_PROBE_MS 800u
 
+/* After SET_CONFIGURATION the host still has to load a driver before it polls
+ * the HID endpoint; Windows routinely takes longer than the 100 ms staleness
+ * window to issue that first IN. Do not tear the link down during bring-up or
+ * the endpoint is never re-armed and the function never starts. */
+#define USB_ENUM_GRACE_MS 2000u
+
 /* USB is usable only when a host has actually enumerated and configured us.
  * Two traps make every naive check wrong:
  *   - USBHS_DevEnumStatus is set only on SET_CONFIGURATION but cleared only
@@ -87,7 +93,21 @@ static bool usb_init(void) {
     return true;
 }
 
+/* Diagnostic: dump the setup packets the device received, captured by the USB
+ * ISR. Drains in thread context because logging must never run from an ISR. */
+static void usb_trace_drain(void) {
+    USBHS_SETUP_TRACE t;
+
+    while (USBHS_SetpTraceRead(&t)) {
+        LOG_I("USB", "setup %02X %02X v=%04X i=%04X l=%u%s", (unsigned)t.bmRequestType,
+              (unsigned)t.bRequest, (unsigned)t.wValue, (unsigned)t.wIndex,
+              (unsigned)t.wLength, t.stalled ? " STALL" : "");
+    }
+}
+
 static void usb_poll(uint32_t now_ms) {
+    usb_trace_drain();
+
     /* A host that is really there takes a report every period, so if nothing has
      * been accepted for this long the "enumerated" state is stale. This matters
      * because USBHS_DevEnumStatus is only ever cleared by a bus reset: a cable
@@ -95,18 +115,30 @@ static void usb_poll(uint32_t now_ms) {
      * that is gone, and every report would go into the void. */
     static uint32_t ok_seen;
     static uint32_t ok_ms;
+    static bool enum_prev;
+    static uint32_t enum_ms;
     static const uint32_t stale_ms = 100u;
 
     const bool vbus = bat_power_good();
     const bool usb_owns = (transport_router_active() == TR_USB);
     const bool ble_owns = (transport_router_active() == TR_BLE);
+    const bool enumerated = (USBHS_DevEnumStatus != 0);
+
+    /* A fresh SET_CONFIGURATION opens a grace window: the host still has to load
+     * its driver before it polls the HID endpoint, which on Windows can outlast
+     * the staleness window. */
+    if (enumerated && !enum_prev) {
+        enum_ms = now_ms;
+    }
+    enum_prev = enumerated;
+    const bool enum_grace = (uint32_t)(now_ms - enum_ms) < USB_ENUM_GRACE_MS;
 
     if (s_tx_ok != ok_seen) {
         ok_seen = s_tx_ok;
         ok_ms = now_ms;
     } else if (!usb_owns) {
         ok_ms = now_ms; /* not our link, so not stale */
-    } else if ((uint32_t)(now_ms - ok_ms) >= stale_ms) {
+    } else if (!enum_grace && (uint32_t)(now_ms - ok_ms) >= stale_ms) {
         LOG_W("USB", "nothing accepted in %u ms, dropping device state", (unsigned)stale_ms);
         usb_forget();
         ok_ms = now_ms;
@@ -155,13 +187,21 @@ static bool usb_link_up(void) {
 }
 
 static bool usb_send(const MouseReport_t *rpt) {
+    /* The HID report descriptor declares a Report ID, so every report on the
+     * wire is led by its ID byte (HID 1.11 6.2.2.7). The logical 6-byte payload
+     * is unchanged; only the USB framing gains the prefix. */
+    uint8_t frame[1 + sizeof(MouseReport_t)];
+
     if (!usb_ready()) {
         return false;
     }
 
+    frame[0] = DEF_USBD_MOUSE_REPORT_ID;
+    memcpy(&frame[1], rpt, sizeof(*rpt));
+
     s_tx_attempts++;
 
-    if (USBHS_Endp_DataUp(USB_HID_EP, (uint8_t *)rpt, sizeof(*rpt), DEF_UEP_CPY_LOAD) == 0) {
+    if (USBHS_Endp_DataUp(USB_HID_EP, frame, sizeof(frame), DEF_UEP_CPY_LOAD) == 0) {
         s_tx_ok++;
         return true;
     }

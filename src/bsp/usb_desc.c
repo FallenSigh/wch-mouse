@@ -18,9 +18,9 @@ const uint8_t MyDevDescr[] = {
     0x12,                                                   // bLength
     0x01,                                                   // bDescriptorType (Device)
     0x00, 0x02,                                             // bcdUSB 2.00
-    0x00,                                                   // bDeviceClass (use IAD)
-    0x00,                                                   // bDeviceSubClass
-    0x00,                                                   // bDeviceProtocol
+    0xEF,                                                   // bDeviceClass (Misc)
+    0x02,                                                   // bDeviceSubClass (Common Class)
+    0x01,                                                   // bDeviceProtocol (IAD)
     DEF_USBD_UEP0_SIZE,                                     // bMaxPacketSize0
     (uint8_t)DEF_USB_VID, (uint8_t)(DEF_USB_VID >> 8),      // idVendor
     (uint8_t)DEF_USB_PID, (uint8_t)(DEF_USB_PID >> 8),      // idProduct
@@ -34,15 +34,20 @@ const uint8_t MyDevDescr[] = {
 /* ===========================================================================
  *  Configuration Descriptor -- Full Speed
  *
- *  Layout (3 interfaces):
+ *  Layout (3 interfaces, one IAD per function):
  *    IAD[0,1]   CDC Comm + CDC Data
  *    Interface 0 CDC Comm   EP3 IN (interrupt)
  *    Interface 1 CDC Data   EP2 OUT, EP2 IN (bulk)
+ *    IAD[2]     HID Mouse
  *    Interface 2 HID Mouse  EP4 IN (interrupt)
+ *
+ *  Windows 10/11 needs a device class of 0xEF/0x02/0x01 and an IAD in front of
+ *  *every* function - including the single-interface HID one - or it reads the
+ *  descriptors and then refuses to start the composite device (Code 43).
  * =========================================================================== */
 const uint8_t MyCfgDescr_FS[] = {
     /* Configuration Descriptor */
-    0x09, 0x02, 0x64, 0x00, 0x03, 0x01, 0x00, 0x80, 0x32,
+    0x09, 0x02, 0x6C, 0x00, 0x03, 0x01, 0x00, 0x80, 0x32,
 
     /* IAD Descriptor (interfaces 0/1 = CDC) */
     0x08, 0x0B, 0x00, 0x02, 0x02, 0x02, 0x01, 0x00,
@@ -74,8 +79,11 @@ const uint8_t MyCfgDescr_FS[] = {
     (uint8_t)DEF_USB_EP2_FS_SIZE, (uint8_t)(DEF_USB_EP2_FS_SIZE >> 8),
     0x00,
 
+    /* IAD Descriptor (interface 2 = HID function) */
+    0x08, 0x0B, 0x02, 0x01, 0x03, 0x00, 0x00, 0x00,
+
     /* Interface 2 (HID Mouse) descriptor */
-    0x09, 0x04, 0x02, 0x00, 0x01, 0x03, 0x01, 0x02, 0x00,  // subclass=boot, proto=mouse
+    0x09, 0x04, 0x02, 0x00, 0x01, 0x03, 0x00, 0x00, 0x00,  // subclass=none, proto=none
 
     /* HID Descriptor (mouse) */
     0x09, 0x21, 0x00, 0x01, 0x00, 0x01, 0x22,
@@ -94,7 +102,7 @@ const uint8_t MyCfgDescr_FS[] = {
  * =========================================================================== */
 const uint8_t MyCfgDescr_HS[] = {
     /* Configuration Descriptor */
-    0x09, 0x02, 0x64, 0x00, 0x03, 0x01, 0x00, 0x80, 0x32,
+    0x09, 0x02, 0x6C, 0x00, 0x03, 0x01, 0x00, 0x80, 0x32,
 
     /* IAD Descriptor (interfaces 0/1 = CDC) */
     0x08, 0x0B, 0x00, 0x02, 0x02, 0x02, 0x01, 0x00,
@@ -126,8 +134,11 @@ const uint8_t MyCfgDescr_HS[] = {
     (uint8_t)DEF_USB_EP2_HS_SIZE, (uint8_t)(DEF_USB_EP2_HS_SIZE >> 8),
     0x00,
 
+    /* IAD Descriptor (interface 2 = HID function) */
+    0x08, 0x0B, 0x02, 0x01, 0x03, 0x00, 0x00, 0x00,
+
     /* Interface 2 (HID Mouse) descriptor */
-    0x09, 0x04, 0x02, 0x00, 0x01, 0x03, 0x01, 0x02, 0x00,
+    0x09, 0x04, 0x02, 0x00, 0x01, 0x03, 0x00, 0x00, 0x00,
 
     /* HID Descriptor (mouse) */
     0x09, 0x21, 0x00, 0x01, 0x00, 0x01, 0x22,
@@ -143,7 +154,14 @@ const uint8_t MyCfgDescr_HS[] = {
 /* ===========================================================================
  *  HID Mouse Report Descriptor
  *
- *  6-byte report:
+ *  Two top-level collections - the mouse Input report and the vendor Feature
+ *  report. Windows refuses to start a device whose report descriptor has
+ *  multiple top-level collections and no Report IDs, so each collection is
+ *  given one (HID 1.11 6.2.2.7: once a Report ID is used, every report on the
+ *  wire carries a leading ID byte). On the wire the mouse report is therefore
+ *  7 bytes and the Feature report 64; the logical payloads stay 6 and 63.
+ *
+ *  Mouse Input report (Report ID 1), 6 payload bytes:
  *    byte 0    = buttons (5 bits used: L/R/M/Bk/Fwd, 3 bits padding)
  *    bytes 1-2 = X delta (int16 LE, relative)
  *    bytes 3-4 = Y delta (int16 LE, relative)
@@ -153,6 +171,7 @@ const uint8_t MyMouseReportDesc[] = {
     0x05, 0x01,         // Usage Page (Generic Desktop)
     0x09, 0x02,         // Usage (Mouse)
     0xA1, 0x01,         // Collection (Application)
+    0x85, 0x01,         //   Report ID (1)
     0x09, 0x01,         //   Usage (Pointer)
     0xA1, 0x00,         //   Collection (Physical)
 
@@ -191,12 +210,12 @@ const uint8_t MyMouseReportDesc[] = {
     0xC0,               // End Collection (Application)
 
     /* Vendor-defined Feature report: the configuration/control channel.
-     * Deliberately no Report ID - the descriptor has a single input report and
-     * this is the single feature report, and an ID here would force one onto
-     * the mouse input too. 63 data bytes. */
+     * Second top-level collection, so it carries its own Report ID (2). On the
+     * wire it is 64 bytes: [0x02][63 data bytes]. */
     0x06, 0x00, 0xFF,   // Usage Page (Vendor-Defined 0xFF00)
     0x09, 0x01,         // Usage (0x01)
     0xA1, 0x01,         // Collection (Application)
+    0x85, 0x02,         //   Report ID (2)
     0x09, 0x01,         //   Usage (0x01)
     0x15, 0x00,         //   Logical Minimum (0)
     0x26, 0xFF, 0x00,   //   Logical Maximum (255)
@@ -232,9 +251,11 @@ const uint8_t MySerNumInfo[] = {
     '6', 0x00, '7', 0x00, '8', 0x00, '9', 0x00
 };
 
-/* Device Qualified Descriptor */
+/* Device Qualified Descriptor. The class/subclass/protocol fields must be
+ * identical to the device descriptor; Windows validates this and drops a
+ * high-speed device whose qualifier disagrees. */
 const uint8_t MyQuaDesc[] = {
-    0x0A, 0x06, 0x00, 0x02, 0xFF, 0xFF, 0xFF, 0x40, 0x01, 0x00,
+    0x0A, 0x06, 0x00, 0x02, 0xEF, 0x02, 0x01, 0x40, 0x01, 0x00,
 };
 
 /* Device BOS Descriptor */

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Vendor configuration channel over a HID Feature report (usage page 0xFF00,
- * no Report ID, 63 data bytes).
+ * Report ID 0x02, 63 data bytes; the Report ID byte leads the control transfer).
  *
  * HID gives the host no payload on a GET_FEATURE, so a transaction is: the
  * host writes a request with SET_FEATURE, and reads the answer back with

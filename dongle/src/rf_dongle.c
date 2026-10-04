@@ -332,8 +332,13 @@ void rf_dongle_poll(void) {
     s_rx_ready = false;
 
     if ((s_mail.type == RF_PKT_TYPE) && (s_mail.length == RF_PKT_LEN)) {
-        USBHS_Endp_DataUp(HID_EP, (uint8_t *)&s_mail.report, sizeof(MouseReport_t),
-                          DEF_UEP_CPY_LOAD);
+        /* The HID report descriptor declares a Report ID, so the USB report is
+         * a one-byte ID prefix followed by the 6-byte on-air payload. */
+        uint8_t frame[1 + sizeof(MouseReport_t)];
+
+        frame[0] = DEF_USBD_MOUSE_REPORT_ID;
+        memcpy(&frame[1], &s_mail.report, sizeof(MouseReport_t));
+        USBHS_Endp_DataUp(HID_EP, frame, sizeof(frame), DEF_UEP_CPY_LOAD);
         rf_reply_feed(&s_mail);
 
         /* Raw dump of the on-air alignment: type, length, seq, resv, then the 6

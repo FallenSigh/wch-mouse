@@ -63,9 +63,20 @@
 #define DEF_USBD_DEVICE_DESC_LEN     ((uint8_t)MyDevDescr[0])
 #define DEF_USBD_CONFIG_FS_DESC_LEN  ((uint16_t)MyCfgDescr_FS[2] + (uint16_t)(MyCfgDescr_FS[3] << 8))
 #define DEF_USBD_CONFIG_HS_DESC_LEN  ((uint16_t)MyCfgDescr_HS[2] + (uint16_t)(MyCfgDescr_HS[3] << 8))
-#define DEF_MOUSE_REPORT_DESC_LEN    85  /* sizeof(MyMouseReportDesc) */
+#define DEF_MOUSE_REPORT_DESC_LEN    89  /* sizeof(MyMouseReportDesc) */
+
+/* HID Report IDs. Windows refuses to start a device whose report descriptor has
+ * multiple top-level collections and no Report IDs, so the mouse Input report
+ * and the vendor Feature report each get one; every report on the wire then
+ * starts with its ID byte (see MyMouseReportDesc). */
+#define DEF_USBD_MOUSE_REPORT_ID     0x01
+#define DEF_USBD_FEATURE_REPORT_ID   0x02
 /* HID interface number in the configuration descriptor (CDC is 0/1). */
 #define DEF_USBD_HID_ITF             2
+/* Byte offset of the HID descriptor inside MyCfgDescr_FS / MyCfgDescr_HS:
+ * config(9) + CDC IAD(8) + CDC iface(9) + 4 func desc(19) + EP3(7) +
+ * CDC data iface(9) + EP2 out/in(14) + HID IAD(8) + HID iface(9) = 92. */
+#define DEF_USBD_HID_DESC_OFFSET     92
 #define DEF_USBD_LANG_DESC_LEN       ((uint16_t)MyLangDescr[0])
 #define DEF_USBD_MANU_DESC_LEN       ((uint16_t)MyManuInfo[0])
 #define DEF_USBD_PROD_DESC_LEN       ((uint16_t)MyProdInfo[0])

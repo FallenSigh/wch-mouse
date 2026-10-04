@@ -127,7 +127,7 @@ The dongle has no button and uses the power-cycle flow.
 ## Host tooling
 
 The mouse exposes a vendor-defined HID **Feature report** (usage page `0xFF00`,
-no Report ID, 63 data bytes). Because HID gives the host no payload on a
+Report ID `0x02`, 63 data bytes). Because HID gives the host no payload on a
 `GET_FEATURE`, every transaction is a `SET_FEATURE` request followed by a
 `GET_FEATURE` read of the answer the device prepared.
 

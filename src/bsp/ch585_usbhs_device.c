@@ -32,6 +32,24 @@ __attribute__ ((aligned(4))) uint8_t IFTest_Buf[ 53 ] =
 /* Global */
 const uint8_t    *pUSBHS_Descr;
 
+/* Setup-packet trace (see the header). */
+volatile USBHS_SETUP_TRACE USBHS_SetpTrace[ USBHS_SETUP_TRACE_N ];
+volatile uint32_t USBHS_SetpTraceW;
+
+uint8_t USBHS_SetpTraceRead( USBHS_SETUP_TRACE *out )
+{
+    static uint32_t rd;
+
+    if( rd == USBHS_SetpTraceW )
+    {
+        return 0;
+    }
+
+    *out = USBHS_SetpTrace[ rd % USBHS_SETUP_TRACE_N ];
+    rd++;
+    return 1;
+}
+
 /* Setup Request */
 volatile uint8_t  USBHS_SetupReqCode;
 volatile uint8_t  USBHS_SetupReqType;
@@ -293,6 +311,7 @@ void USB2_DEVICE_IRQHandler( void )
     uint8_t  intflag, intst, errflag;
     uint16_t len,i;
     uint8_t endp_num;
+    uint8_t setup_slot = 0;
     uint32_t baudrate;
 
     intflag = R8_USB2_INT_FG;
@@ -314,6 +333,17 @@ void USB2_DEVICE_IRQHandler( void )
                         USBHS_SetupReqLen   = pUSBHS_SetupReqPak->wLength;
                         USBHS_SetupReqValue = pUSBHS_SetupReqPak->wValue;
                         USBHS_SetupReqIndex = pUSBHS_SetupReqPak->wIndex;
+
+                        /* Record the request; the stall bit is set below if it
+                         * is one we reject. */
+                        setup_slot = (uint8_t)( USBHS_SetpTraceW % USBHS_SETUP_TRACE_N );
+                        USBHS_SetpTrace[ setup_slot ].bmRequestType = USBHS_SetupReqType;
+                        USBHS_SetpTrace[ setup_slot ].bRequest = USBHS_SetupReqCode;
+                        USBHS_SetpTrace[ setup_slot ].wValue = USBHS_SetupReqValue;
+                        USBHS_SetpTrace[ setup_slot ].wIndex = USBHS_SetupReqIndex;
+                        USBHS_SetpTrace[ setup_slot ].wLength = USBHS_SetupReqLen;
+                        USBHS_SetpTrace[ setup_slot ].stalled = 0;
+                        USBHS_SetpTraceW++;
 
                         len = 0;
                         errflag = 0;
@@ -347,15 +377,17 @@ void USB2_DEVICE_IRQHandler( void )
 
                                     case HID_GET_REPORT:                            /* 0x01: GET_REPORT */
                                         /* Feature reports on the HID interface only:
-                                         * return whatever the last SET_REPORT left. */
+                                         * return whatever the last SET_REPORT left. The
+                                         * report is led by its Report ID byte. */
                                         if( (USBHS_SetupReqIndex == DEF_USBD_HID_ITF) &&
                                             ((USBHS_SetupReqValue >> 8) == 0x03) )
                                         {
-                                            proto_handle_get( HID_Report_Buffer, PROTO_FRAME_LEN );
+                                            HID_Report_Buffer[ 0 ] = DEF_USBD_FEATURE_REPORT_ID;
+                                            proto_handle_get( &HID_Report_Buffer[ 1 ], PROTO_FRAME_LEN );
                                             pUSBHS_Descr = HID_Report_Buffer;
-                                            if( USBHS_SetupReqLen > PROTO_FRAME_LEN )
+                                            if( USBHS_SetupReqLen > PROTO_FRAME_LEN + 1 )
                                             {
-                                                USBHS_SetupReqLen = PROTO_FRAME_LEN;
+                                                USBHS_SetupReqLen = PROTO_FRAME_LEN + 1;
                                             }
                                         }
                                         else
@@ -365,7 +397,7 @@ void USB2_DEVICE_IRQHandler( void )
                                         break;
 
                                     case HID_SET_IDLE:                              /* 0x0A: SET_IDLE */
-                                        if( USBHS_SetupReqIndex == 0x00 )
+                                        if( USBHS_SetupReqIndex == DEF_USBD_HID_ITF )
                                         {
                                             USBHS_HidIdle = (uint8_t)( USBHS_SetupReqValue >> 8 );
                                         }
@@ -376,7 +408,7 @@ void USB2_DEVICE_IRQHandler( void )
                                         break;
 
                                     case HID_SET_PROTOCOL:                          /* 0x0B: SET_PROTOCOL */
-                                        if( USBHS_SetupReqIndex == 0x00 )
+                                        if( USBHS_SetupReqIndex == DEF_USBD_HID_ITF )
                                         {
                                             USBHS_HidProtocol = (uint8_t)USBHS_SetupReqValue;
                                         }
@@ -387,7 +419,7 @@ void USB2_DEVICE_IRQHandler( void )
                                         break;
 
                                     case HID_GET_IDLE:                              /* 0x02: GET_IDLE */
-                                        if( USBHS_SetupReqIndex == 0x00 )
+                                        if( USBHS_SetupReqIndex == DEF_USBD_HID_ITF )
                                         {
                                             USBHS_EP0_Buf[ 0 ] = USBHS_HidIdle;
                                             len = 1;
@@ -399,7 +431,7 @@ void USB2_DEVICE_IRQHandler( void )
                                         break;
 
                                     case HID_GET_PROTOCOL:                          /* 0x03: GET_PROTOCOL */
-                                        if( USBHS_SetupReqIndex == 0x00 )
+                                        if( USBHS_SetupReqIndex == DEF_USBD_HID_ITF )
                                         {
                                             USBHS_EP0_Buf[ 0 ] = USBHS_HidProtocol;
                                             len = 1;
@@ -485,12 +517,12 @@ void USB2_DEVICE_IRQHandler( void )
                                             {
                                                 if( USBHS_DevSpeed == USBHS_SPEED_HIGH )
                                                 {
-                                                    pUSBHS_Descr = &MyCfgDescr_HS[ 84 ];
+                                                    pUSBHS_Descr = &MyCfgDescr_HS[ DEF_USBD_HID_DESC_OFFSET ];
                                                     len = 9;
                                                 }
                                                 else
                                                 {
-                                                    pUSBHS_Descr = &MyCfgDescr_FS[ 84 ];
+                                                    pUSBHS_Descr = &MyCfgDescr_FS[ DEF_USBD_HID_DESC_OFFSET ];
                                                     len = 9;
                                                 }
                                             }
@@ -827,6 +859,7 @@ void USB2_DEVICE_IRQHandler( void )
                         /* errflag = 0xFF means a request not support or some errors occurred, else correct */
                         if( errflag == 0xFF )
                         {
+                            USBHS_SetpTrace[ setup_slot ].stalled = 1;
                             /* if one request not support, return stall */
                             R8_U2EP0_TX_CTRL = USBHS_UEP_T_TOG_DATA1 | USBHS_UEP_T_RES_STALL;
                             R8_U2EP0_RX_CTRL = USBHS_UEP_R_TOG_DATA1 | USBHS_UEP_R_RES_STALL;
@@ -899,12 +932,17 @@ void USB2_DEVICE_IRQHandler( void )
                                 memcpy(&HID_Report_Buffer[Hid_Report_Ptr],USBHS_EP0_Buf,len);
                                 Hid_Report_Ptr += len;
 
-                                /* The whole 63-byte frame arrives in this one
+                                /* The first byte is the Report ID; the 63-byte frame
+                                 * follows it. The whole thing arrives in this one
                                  * control OUT packet, so run it now. */
                                 if( Hid_FeatureSet )
                                 {
                                     Hid_FeatureSet = 0;
-                                    proto_handle_set( HID_Report_Buffer, Hid_Report_Ptr );
+                                    if( Hid_Report_Ptr > 1 )
+                                    {
+                                        proto_handle_set( &HID_Report_Buffer[ 1 ],
+                                                          (uint16_t)( Hid_Report_Ptr - 1 ) );
+                                    }
                                 }
 
                                 R8_U2EP0_RX_CTRL ^= USBHS_UEP_R_TOG_DATA1;

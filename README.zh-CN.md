@@ -122,7 +122,7 @@ dongle 没有按键，沿用断电流程。
 
 ## 主机工具
 
-鼠标暴露一个厂商自定义的 HID **Feature 报告**（usage page `0xFF00`，无 Report ID，
+鼠标暴露一个厂商自定义的 HID **Feature 报告**（usage page `0xFF00`，Report ID `0x02`，
 63 字节数据）。由于 HID 的 `GET_FEATURE` 不向主机返回负载，每次交互都是"先
 `SET_FEATURE` 写请求，再 `GET_FEATURE` 读设备准备好的应答"两步。
 

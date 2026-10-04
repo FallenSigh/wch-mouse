@@ -126,6 +126,25 @@ extern __attribute__ ((aligned(4))) uint8_t USBHS_EP3_Tx_Buf[ DEF_USB_EP3_HS_SIZ
 extern __attribute__ ((aligned(4))) uint8_t USBHS_EP4_Tx_Buf[ DEF_USB_EP2_HS_SIZE ];
 extern __attribute__ ((aligned(4))) uint8_t USBHS_EP4_Rx_Buf[ DEF_USB_EP2_HS_SIZE ];
 
+/* Setup-packet trace. Recorded in the USB ISR (memory writes only) and drained
+ * from thread context, so a host's enumeration sequence can be seen without
+ * logging from an ISR. */
+typedef struct __attribute__ ((packed)) _USBHS_SETUP_TRACE
+{
+    uint8_t  bmRequestType;
+    uint8_t  bRequest;
+    uint16_t wValue;
+    uint16_t wIndex;
+    uint16_t wLength;
+    uint8_t  stalled;
+} USBHS_SETUP_TRACE, *pUSBHS_SETUP_TRACE;
+
+#define USBHS_SETUP_TRACE_N 128
+extern volatile USBHS_SETUP_TRACE USBHS_SetpTrace[ USBHS_SETUP_TRACE_N ];
+extern volatile uint32_t USBHS_SetpTraceW;
+/* Pops one recorded setup packet; returns 0 when the trace is drained. */
+extern uint8_t USBHS_SetpTraceRead( USBHS_SETUP_TRACE *out );
+
 /********************************************************************************/
 /* Function Declaration */
 extern void USBHS_Device_Endp_Init ( void );
