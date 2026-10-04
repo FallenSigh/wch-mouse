@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Talk to the wch-mouse configuration channel over its HID Feature report.
 
-The mouse exposes a vendor-defined Feature report (usage page 0xFF00, no
-Report ID, 63 data bytes) on its HID interface. HID gives the host no payload
+The mouse exposes a vendor-defined Feature report (usage page 0xFF00, Report
+ID 0x02, 63 data bytes) on its HID interface. HID gives the host no payload
 on a GET_FEATURE, so every transaction is two steps:
 
     SET_FEATURE  <- host writes a request frame
@@ -32,7 +32,11 @@ import time
 VID = 0x1A86
 PID = 0xFE0C
 HID_ITF = 2
-REPORT_ID = 0x00
+# The vendor Feature lives in its own top-level collection (usage page 0xFF00)
+# on interface 2; Windows exposes it as a separate HID collection from the
+# mouse collection, so select it by usage page, not just by interface number.
+USAGE_PAGE = 0xFF00
+REPORT_ID = 0x02
 FRAME_LEN = 63
 
 # Commands (src/app/proto.c).
@@ -106,7 +110,7 @@ def next_seq() -> int:
 
 
 def build_frame(cmd: int, seq: int, payload: bytes = b"") -> bytes:
-    """Encode one request frame (FRAME_LEN bytes, no Report ID)."""
+    """Encode one request frame (FRAME_LEN bytes; transact adds the Report ID)."""
     if len(payload) > FRAME_LEN - 4:
         raise ValueError(f"payload too long ({len(payload)} > {FRAME_LEN - 4})")
 
@@ -145,6 +149,8 @@ def open_device(opts):
 
     want = opts.path.encode() if opts.path else None
     chosen = next((i for i in infos if want and i["path"] == want), None)
+    if chosen is None:
+        chosen = next((i for i in infos if i.get("usage_page") == USAGE_PAGE), None)
     if chosen is None:
         chosen = next((i for i in infos if i.get("interface_number") == HID_ITF), infos[0])
 

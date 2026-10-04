@@ -81,12 +81,13 @@ pub struct DeviceInfo {
     pub is_vendor_interface: bool,
 }
 
-/// Enumerate every mouse/dongle product, one entry per hidraw node.
+/// Enumerate every mouse/dongle product, one entry per device.
 ///
-/// hidapi lists a single HID interface once per top-level usage (the mouse
-/// collection and the vendor Feature collection share one `/dev/hidrawN`), so
-/// raw enumeration returns the same path several times. We keep one entry per
-/// path, preferring the vendor Feature collection the protocol actually uses.
+/// hidapi lists a HID interface once per top-level usage: the mouse collection
+/// and the vendor Feature collection. Only the vendor Feature collection carries
+/// the protocol, so the mouse collection is skipped - connecting to it can only
+/// fail. (On Windows each collection has its own path; on Linux they share one
+/// `/dev/hidrawN`, so this also collapses the per-usage duplicates.)
 pub fn list_devices(api: &HidApi) -> Vec<DeviceInfo> {
     let mut out: Vec<DeviceInfo> = Vec::new();
 
@@ -100,27 +101,26 @@ pub fn list_devices(api: &HidApi) -> Vec<DeviceInfo> {
             _ => continue,
         };
 
+        if info.usage_page() != protocol::USAGE_PAGE {
+            continue;
+        }
+
         let path = info.path().to_string_lossy().into_owned();
-        let is_vendor_interface = info.usage_page() == protocol::USAGE_PAGE;
-        let entry = DeviceInfo {
+        if out.iter().any(|e| e.path == path) {
+            continue;
+        }
+
+        out.push(DeviceInfo {
             kind,
-            path: path.clone(),
+            path,
             product: info.product_string().map(str::to_owned),
             manufacturer: info.manufacturer_string().map(str::to_owned),
             serial: info.serial_number().map(str::to_owned),
             interface_number: info.interface_number(),
             usage_page: info.usage_page(),
             usage: info.usage(),
-            is_vendor_interface,
-        };
-
-        match out.iter_mut().find(|e| e.path == path) {
-            Some(existing) if is_vendor_interface && !existing.is_vendor_interface => {
-                *existing = entry;
-            }
-            Some(_) => {}
-            None => out.push(entry),
-        }
+            is_vendor_interface: true,
+        });
     }
 
     out

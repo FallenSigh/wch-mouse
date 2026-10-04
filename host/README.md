@@ -2,8 +2,8 @@
 
 A Tauri v2 desktop application that is the PC-side configuration and status
 client for the [wch-mouse](../README.md) firmware. It talks to the mouse over
-its vendor HID **Feature report** channel (usage page `0xFF00`, no Report ID,
-63 data bytes), either wired (product id `0xFE0C`) or wirelessly through the
+its vendor HID **Feature report** channel (usage page `0xFF00`, Report ID
+`0x02`, 63 data bytes), either wired (product id `0xFE0C`) or wirelessly through the
 2.4 GHz dongle (product id `0xFE0D`), where a command crosses the RF link and
 its answer comes back longer.
 

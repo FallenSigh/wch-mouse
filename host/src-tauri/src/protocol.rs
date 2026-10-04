@@ -31,8 +31,8 @@ pub const PID_DONGLE: u16 = 0xFE0D;
 pub const HID_INTERFACE: i32 = 2;
 /// Usage page of the vendor Feature report.
 pub const USAGE_PAGE: u16 = 0xFF00;
-/// Feature report id (0 = none; the report-id byte is still sent/read).
-pub const REPORT_ID: u8 = 0x00;
+/// Feature report id (the vendor Feature collection's Report ID).
+pub const REPORT_ID: u8 = 0x02;
 /// Total frame length in bytes, no Report ID.
 pub const FRAME_LEN: usize = 63;
 /// Maximum payload a frame can carry (`len` byte included).

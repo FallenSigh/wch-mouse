@@ -71,6 +71,9 @@ impl Transport {
     /// `GET_FEATURE`: read one report with the Report-ID prefix and strip it.
     fn read_frame(&self) -> Result<Vec<u8>> {
         let mut buf = [0u8; 1 + FRAME_LEN];
+        // hidapi fetches the report named by buf[0]; it must be our vendor
+        // Feature report, not report 0.
+        buf[0] = REPORT_ID;
         let n = self.device.get_feature_report(&mut buf)?;
         let read = &buf[..n.min(buf.len())];
         Ok(protocol::strip_report_id(read)
