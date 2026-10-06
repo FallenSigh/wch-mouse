@@ -116,6 +116,7 @@ void pointer_update(pointer_t *p, float yaw_deg, float pitch_deg, uint8_t raw_bu
         p->settling = true;
         p->settle_at = now_ms + p->settle_ms;
     }
+    p->raw = mouse;
     p->raw_prev = mouse;
 
     const uint8_t mid = (uint8_t)(raw_buttons & POINTER_BTN_MID);
