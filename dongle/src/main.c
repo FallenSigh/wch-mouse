@@ -11,7 +11,7 @@
 __attribute__((aligned(4))) uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];
 
 int main(void) {
-    HSECFG_Capacitance(HSECap_12p);
+    HSECFG_Capacitance(HSECap_10p);
     SetSysClock(SYSCLK_FREQ);
 
     /* Debug UART1 on PA8/PA9, matching wch-mouse. */
