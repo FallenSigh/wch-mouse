@@ -15,7 +15,8 @@
 
 add_executable(wch-dongle
     src/main.c
-    src/rf_dongle.c)
+    src/rf_dongle.c
+    src/isp.c)
 
 target_include_directories(wch-dongle PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src)

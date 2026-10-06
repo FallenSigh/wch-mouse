@@ -15,6 +15,7 @@
 #include "rf_cfg.h"
 #include "CH58x_common.h"
 #include "ch585_usbhs_device.h"
+#include "isp.h"
 #include "log.h"
 #include "wchrf.h"
 
@@ -26,6 +27,13 @@
  * pass through intact. */
 #define RF_CMD_MAX    63u
 #define RF_CMD_REPEAT 400u
+
+/* Turns a vendor Feature SET into "reboot into the ROM ISP bootloader". The
+ * dongle is transparent for the mouse's protocol, so this is a frame that
+ * protocol would never use, and it is long enough that a stray report cannot
+ * trip it. The magic leads the report payload; anything after it is padding.
+ * Driver: scripts/mouse_proto.py --dongle isp. */
+static const uint8_t ISP_REQ_MAGIC[] = {'W', 'C', 'H', 'I', 'S', 'P', '!'};
 
 static __attribute__((aligned(4))) uint8_t s_rx[RF_RX_BUF_LEN]; /* RF DMA target */
 static RfPacket_t s_mail; /* last complete packet, consumed by the poll */
@@ -79,6 +87,15 @@ void proto_handle_set(const uint8_t *frame, uint16_t len) {
     uint16_t n;
 
     if ((frame == NULL) || (len == 0u)) {
+        return;
+    }
+
+    /* The one command the dongle acts on itself: a magic vendor Feature frame
+     * reboots it into the ROM ISP bootloader. Checked before staging so it is
+     * never passed on to the mouse (which would only NACK an unknown command). */
+    if ((len >= sizeof(ISP_REQ_MAGIC)) &&
+        (memcmp(frame, ISP_REQ_MAGIC, sizeof(ISP_REQ_MAGIC)) == 0)) {
+        isp_request();
         return;
     }
 

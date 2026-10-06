@@ -39,6 +39,11 @@ USAGE_PAGE = 0xFF00
 REPORT_ID = 0x02
 FRAME_LEN = 63
 
+# Reboot the dongle into its ROM ISP bootloader: the raw report payload (no
+# protocol framing) starts with this magic. Matches ISP_REQ_MAGIC in
+# dongle/src/rf_dongle.c; anything after it is padding.
+ISP_MAGIC = b"WCHISP!"
+
 # Commands (src/app/proto.c).
 CMD_GET_VERSION = 0x01
 CMD_GET_INFO = 0x02
@@ -265,6 +270,7 @@ def main() -> int:
     p.add_argument("value", nargs="?", type=int)
     p = sub.add_parser("motor-en", help="vibration motor on/off: get, or set 0/1")
     p.add_argument("value", nargs="?", type=int, choices=(0, 1))
+    sub.add_parser("isp", help="reboot the dongle into its ROM ISP bootloader (needs --dongle)")
     p = sub.add_parser("raw", help="send an arbitrary command with a hex payload")
     p.add_argument("cmd", type=lambda s: int(s, 0))
     p.add_argument("payload", nargs="*", help="payload bytes, e.g. 40 06")
@@ -419,6 +425,17 @@ def main() -> int:
             st, _ = transact(dev, CMD_BIO_SLEEP, bytes([opts.value]), seq=opts.seq)
             ok(st)
             print("bio sleep", "on" if opts.value else "off")
+        elif cmd == "isp":
+            if not opts.dongle:
+                raise SystemExit("isp targets the dongle only: run with --dongle")
+            # No protocol framing: the dongle matches the payload verbatim.
+            # Pad to the report length; the device ignores the tail.
+            report = bytes([REPORT_ID]) + ISP_MAGIC.ljust(FRAME_LEN, b"\x00")
+            sent = dev.send_feature_report(report)
+            if sent is not None and sent < 0:
+                raise SystemExit(f"the device rejected the feature report ({sent})")
+            print("sent ISP request; the dongle reboots into the ROM bootloader. "
+                  "Flash it with: cmake --build build --target flash-usb-dongle")
         elif cmd == "raw":
             payload = bytes(int(b, 0) for b in opts.payload)
             st, d = transact(dev, opts.cmd, payload, seq=opts.seq)

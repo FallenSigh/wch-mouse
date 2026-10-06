@@ -2,6 +2,7 @@
 #include "log.h"
 #include "ch585_usbhs_device.h"
 #include "UART.h"
+#include "isp.h"
 #include "rf_dongle.h"
 
 #include "CONFIG.h"
@@ -29,6 +30,7 @@ int main(void) {
     /* USB HID mouse device. */
     USBHS_Device_Init(ENABLE);
 
+    isp_init();
     rf_dongle_init();
 
     LOG_I("DONGLE", "ready");
@@ -36,5 +38,6 @@ int main(void) {
     while (1) {
         TMOS_SystemProcess(); /* 625 us tick, main-loop context only */
         rf_dongle_poll();
+        isp_poll();
     }
 }
