@@ -56,6 +56,7 @@ bool paw3395_motion_ready(void) {
 
 static volatile bool s_motion_on;
 static volatile bool s_motion_parked;
+static volatile bool s_motion_wake_pending;
 static volatile int32_t s_motion_dx;
 static volatile int32_t s_motion_dy;
 static __attribute__((aligned(4))) uint8_t s_motion_buf[PAW3395_MOTION_BURST_LEN];
@@ -86,8 +87,12 @@ __INTERRUPT __HIGH_CODE void GPIOA_IRQHandler(void) {
 
         /* Parked: record only. The burst needs the SPI bus and the flash, and
          * neither is up yet - paw3395_motion_start() picks the sample up. */
-        if (s_motion_on && !s_motion_parked) {
-            paw3395_motion_burst();
+        if (s_motion_on) {
+            if (s_motion_parked) {
+                s_motion_wake_pending = true;
+            } else {
+                paw3395_motion_burst();
+            }
         }
     }
 }
@@ -96,8 +101,14 @@ void paw3395_motion_park(void) {
     s_motion_parked = true;
 }
 
+bool paw3395_motion_wake_pending(void) {
+    return s_motion_wake_pending || paw3395_motion_ready() ||
+           (R16_PA_INT_IF & BOARD_PAW_MOTION_ALT_PIN) != 0u;
+}
+
 void paw3395_motion_start(void) {
     s_motion_parked = false;
+    s_motion_wake_pending = false;
     s_motion_dx = 0;
     s_motion_dy = 0;
     s_motion_on = false;

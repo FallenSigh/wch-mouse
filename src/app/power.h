@@ -10,8 +10,8 @@
  *
  * The PAW3395 keeps working on its own: it downshifts Run -> Rest1 -> Rest2 ->
  * Rest3 when idle and still signals motion on its MOTION pin, which is wired to
- * PA7 and armed as the GPIO wake source. A charger or cable insert wakes
- * through BAT, so the board can never be stranded asleep.
+ * PA7 and armed as the GPIO wake source. The active-low charger PGOOD signal
+ * on PB6 is also armed as GPIO wake; BAT wake is a low-battery event, not VBUS.
  *
  * The caller must re-arm anything derived from the core clock when
  * power_poll() reports that it slept. */

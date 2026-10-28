@@ -12,9 +12,9 @@ static volatile uint8_t s_btn_stable;
 static volatile uint8_t s_btn_raw_prev;
 static volatile uint32_t s_btn_raw_ms;
 
-/* Set by the GPIOB wake ISR so a press that is over before the first scan
- * still counts as activity instead of being lost. */
-static volatile bool s_btn_wake;
+/* Set by the GPIOB wake ISR so a short input event is not lost before the next
+ * scan. This also covers the charger PGOOD wake pin. */
+static volatile bool s_gpio_wake;
 
 static uint32_t s_stat_ms;
 static uint32_t s_pub_cnt;
@@ -64,6 +64,23 @@ static int8_t clamp8(int32_t v) {
 static int8_t s_enc_accum;
 static uint8_t s_enc_prev;
 
+static uint8_t buttons_from_pins(uint32_t pins) {
+    uint8_t buttons = 0;
+
+    if (!(pins & BOARD_BTN_LEFT_PIN))
+        buttons |= HID_BTN_LEFT;
+    if (!(pins & BOARD_BTN_RIGHT_PIN))
+        buttons |= HID_BTN_RIGHT;
+    if (!(pins & BOARD_BTN_MID_PIN))
+        buttons |= HID_BTN_MID;
+    if (!(pins & BOARD_BTN_SIDE1_PIN))
+        buttons |= HID_BTN_BACK;
+    if (!(pins & BOARD_BTN_SIDE2_PIN))
+        buttons |= HID_BTN_FWD;
+
+    return buttons;
+}
+
 static int8_t encoder_update(uint32_t pins) {
     static const int8_t quad[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
 
@@ -89,15 +106,18 @@ static int8_t encoder_update(uint32_t pins) {
 void mouse_init(void) {
     GPIOB_ModeCfg(BOARD_INPUT_ALL_PINS, GPIO_ModeIN_PU);
 
-    s_btn_stable = HID_BTN_MASK;
-    s_btn_raw_prev = HID_BTN_MASK;
+    const uint32_t pins = GPIOB_ReadPort();
+    const uint8_t buttons = buttons_from_pins(pins);
+
+    /* Seed debounce state from the actual active-low inputs. Starting at the
+     * button mask reports every button as pressed until the first debounce. */
+    s_btn_stable = buttons;
+    s_btn_raw_prev = buttons;
     s_btn_raw_ms = 0u;
 
     s_pend_dx = 0;
     s_pend_dy = 0;
     s_pend_wheel = 0;
-
-    const uint32_t pins = GPIOB_ReadPort();
 
     s_enc_prev =
         (uint8_t)(((pins & BOARD_ENC_A_PIN) ? 2u : 0u) | ((pins & BOARD_ENC_B_PIN) ? 1u : 0u));
@@ -115,11 +135,18 @@ void mouse_wake_disarm(void) {
     R16_PB_INT_IF = BOARD_INPUT_WAKE_PINS;
 }
 
+bool mouse_wake_pending(void) {
+    const uint32_t pins = GPIOB_ReadPort();
+
+    return s_gpio_wake || (R16_PB_INT_IF & BOARD_INPUT_WAKE_PINS) != 0u ||
+           (pins & BOARD_WAKE_ACTIVE_LOW_PINS) != BOARD_WAKE_ACTIVE_LOW_PINS;
+}
+
 /* Runs from RAM: in standby this fires as the wake-up event, when the flash and
  * the 32M clock are still down, so it only records the edge and clears it. */
 __INTERRUPT __HIGH_CODE void GPIOB_IRQHandler(void) {
     R16_PB_INT_IF = BOARD_INPUT_WAKE_PINS;
-    s_btn_wake = true;
+    s_gpio_wake = true;
 }
 
 void mouse_scan(uint32_t now_ms) {
@@ -128,24 +155,13 @@ void mouse_scan(uint32_t now_ms) {
     s_scan_cnt++;
     const uint32_t pins = GPIOB_ReadPort();
 
-    uint8_t raw_btn = 0;
+    const uint8_t raw_btn = buttons_from_pins(pins);
     uint8_t active = 0;
 
-    if (s_btn_wake) {
-        s_btn_wake = false;
+    if (s_gpio_wake) {
+        s_gpio_wake = false;
         active = 1;
     }
-
-    if (!(pins & BOARD_BTN_LEFT_PIN))
-        raw_btn |= HID_BTN_LEFT;
-    if (!(pins & BOARD_BTN_RIGHT_PIN))
-        raw_btn |= HID_BTN_RIGHT;
-    if (!(pins & BOARD_BTN_MID_PIN))
-        raw_btn |= HID_BTN_MID;
-    if (!(pins & BOARD_BTN_SIDE1_PIN))
-        raw_btn |= HID_BTN_BACK;
-    if (!(pins & BOARD_BTN_SIDE2_PIN))
-        raw_btn |= HID_BTN_FWD;
 
     if (raw_btn != s_btn_raw_prev) {
         s_btn_raw_prev = raw_btn;

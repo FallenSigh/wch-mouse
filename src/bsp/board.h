@@ -70,15 +70,21 @@
 /* ISP/BOOT strap */
 #define BOARD_ISP_BTN_PIN GPIO_Pin_22 /* PB22 */
 
-/* Input masks (must stay the exact bit combinations the buttons/encoder use). */
+/* Button and encoder inputs sampled together by the mouse scanner. */
 #define BOARD_INPUT_ALL_PINS                                                              \
     (BOARD_BTN_LEFT_PIN | BOARD_BTN_RIGHT_PIN | BOARD_BTN_MID_PIN | BOARD_BTN_SIDE1_PIN | \
      BOARD_BTN_SIDE2_PIN | BOARD_ENC_A_PIN | BOARD_ENC_B_PIN)
 
-/* Standby wake-on-input. Only PB0-PB15 carry a GPIOB interrupt bit, so the
- * encoder's B phase (PB19) cannot be a wake source. */
+/* Active-low sources used by the standby wake handler. PGOOD is pulled low when
+ * VBUS is present. Only PB0-PB15 carry a GPIOB interrupt bit, so encoder B
+ * (PB19) cannot be a wake source. */
+#define BOARD_WAKE_ACTIVE_LOW_PINS                                             \
+    ((uint16_t)(BOARD_BTN_LEFT_PIN | BOARD_BTN_RIGHT_PIN | BOARD_BTN_MID_PIN | \
+                BOARD_BTN_SIDE1_PIN | BOARD_BTN_SIDE2_PIN | BOARD_BAT_PGOOD_PIN))
+
 #define BOARD_INPUT_WAKE_PINS                                                  \
     ((uint16_t)(BOARD_BTN_LEFT_PIN | BOARD_BTN_RIGHT_PIN | BOARD_BTN_MID_PIN | \
-                BOARD_BTN_SIDE1_PIN | BOARD_BTN_SIDE2_PIN | BOARD_ENC_A_PIN))
+                BOARD_BTN_SIDE1_PIN | BOARD_BTN_SIDE2_PIN | BOARD_ENC_A_PIN |  \
+                BOARD_BAT_PGOOD_PIN))
 
 #endif /* __BOARD_H__ */

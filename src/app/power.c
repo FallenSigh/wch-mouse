@@ -12,9 +12,8 @@
  *     Rest2 -> Rest3 as it idles) and still drives MOTION. PA7 is the GPIO
  *     wake source; the response time is the sensor's own (about 200 ms from
  *     Rest2), which is the price of letting it drop to 11 uA.
- *   - BAT covers a charger or cable insert. That is also the escape hatch: a
- *     wrong wake configuration can never leave the board stranded, because
- *     plugging the cable always brings it back.
+ *   - The charger PGOOD signal (PB6, active low) is armed as a GPIO wake
+ *     source. The chip BAT wake is a low-battery event, not a cable detector.
  *
  * The core power domain stays powered across LowPower_Sleep(), so the
  * peripheral registers survive; only the core clock, the flash and the
@@ -84,24 +83,26 @@ static void standby_park(void) {
     PWR_SafeClkCfg(DISABLE, 0x7);
 }
 
-/* PA7 is already an armed falling-edge interrupt; the button pins are armed
- * here. GPIO wake turns either into a sleep wake-up. BAT is the charger/cable
- * escape hatch. */
+/* PA7 is already armed. GPIOB arms the buttons, encoder A and charger PGOOD
+ * (PB6); all of these use the chip's GPIO wake path. */
 static void standby_wake_cfg(void) {
     mouse_wake_arm();
     PWR_PeriphWakeUpCfg(ENABLE, RB_SLP_GPIO_WAKE, Long_Delay);
-    PWR_PeriphWakeUpCfg(ENABLE, RB_SLP_BAT_WAKE, Long_Delay);
 }
 
 /* Runs from RAM: LowPower_Sleep() powers the flash down and switches the system
  * clock, so nothing on this path may execute from flash once it is entered. */
 __HIGH_CODE
-static void standby_sleep(void) {
+static bool standby_sleep(void) {
     uint32_t irq_status;
+    uint16_t clk_sys_cfg;
+    uint8_t hfck_pwr_ctrl;
     uint8_t wake_ctrl;
     volatile uint32_t spin;
 
     SYS_DisableAllIrq(&irq_status);
+    clk_sys_cfg = R16_CLK_SYS_CFG;
+    hfck_pwr_ctrl = R8_HFCK_PWR_CTRL;
     wake_ctrl = R8_SLP_WAKE_CTRL;
 
     /* SYS_DisableAllIrq() clears EVERY PFIC enable, the motion pin's and the
@@ -111,31 +112,57 @@ static void standby_sleep(void) {
     PFIC_EnableIRQ(GPIO_A_IRQn);
     PFIC_EnableIRQ(GPIO_B_IRQn);
 
-    /* No RTC wake: the sensor, the buttons and the cable are the only things
-     * that should bring us back, and keeping the 32K alive for nothing costs
-     * current. */
+    /* GPIO wake uses the default level mode (bit 7 clear). RB_GPIO_EDGE_WAKE is
+     * intentionally clear: the datasheet only supports its any-edge mode with
+     * WFE, while this path uses WFI. */
     sys_safe_access_enable();
-    R8_SLP_WAKE_CTRL = RB_WAKE_EV_MODE | RB_SLP_GPIO_WAKE | RB_SLP_BAT_WAKE;
+    R8_SLP_WAKE_CTRL = RB_WAKE_EV_MODE | RB_SLP_GPIO_WAKE;
+
+    /* Match the EVT PM example: make HSI the PLL source before sleep, so the
+     * vendor LowPower_Sleep() restores a stable internal clock after wake. */
+    R8_HFCK_PWR_CTRL |= RB_CLK_RC16M_PON;
+    R16_CLK_SYS_CFG &= (uint16_t)~RB_OSC32M_SEL;
     sys_safe_access_disable();
+
+    /* An input can arrive after the scan but before WFI. Do not sleep with an
+     * already-asserted level or an edge that was latched during peripheral park. */
+    if (mouse_wake_pending() || paw3395_motion_wake_pending()) {
+        sys_safe_access_enable();
+        R8_SLP_WAKE_CTRL = wake_ctrl;
+        R16_CLK_SYS_CFG = clk_sys_cfg;
+        R8_HFCK_PWR_CTRL = hfck_pwr_ctrl;
+        sys_safe_access_disable();
+
+        SYS_RecoverIrq(irq_status);
+        return false;
+    }
 
     LowPower_Sleep(RB_PWR_RAM32K | RB_PWR_RAM96K);
 
-    /* The flash is powered again but needs a few hundred microseconds before it
-     * can be read (LowPower_Sleep() leaves that delay to its caller, with the
-     * vendor's own DelayUs(300) commented out). This function runs from RAM, so
-     * spin here rather than let the next flash fetch come back as garbage. */
-    for (spin = 0u; spin < 60000u; spin++) {
+    /* LowPower_Sleep() returns on the internal PLL clock because we selected
+     * HSI above. Restart HSE here, from RAM, then let both HSE and Flash settle
+     * before calling any ordinary flash-resident code. The datasheet gives an
+     * HSE stabilization maximum of 3 ms; this conservative HSI-clocked loop is
+     * longer than that and also covers the Flash wake delay. */
+    sys_safe_access_enable();
+    R8_XT32M_TUNE = (uint8_t)((R8_XT32M_TUNE & 0xFCu) | 0x03u);
+    R8_HFCK_PWR_CTRL &= (uint8_t)~RB_CLK_XT32M_PON;
+    R8_HFCK_PWR_CTRL |= RB_CLK_XT32M_PON;
+    sys_safe_access_disable();
+
+    for (spin = 0u; spin < 100000u; spin++) {
         __nop();
     }
 
-    SetSysClock(SYSCLK_FREQ);
     HSECFG_Current(HSE_RCur_100);
+    SetSysClock(SYSCLK_FREQ);
 
     sys_safe_access_enable();
     R8_SLP_WAKE_CTRL = wake_ctrl;
     sys_safe_access_disable();
 
     SYS_RecoverIrq(irq_status);
+    return true;
 }
 
 static void standby_restore(void) {
@@ -210,14 +237,14 @@ bool power_poll(uint32_t now_ms) {
         return false;
     }
 
-    LOG_I("PWR", "standby: parking, sleeping");
+    LOG_I("PWR", "standby: preparing");
 
-    standby_park();
     standby_wake_cfg();
-    standby_sleep();
+    standby_park();
+    const bool slept = standby_sleep();
     standby_restore();
 
-    LOG_I("PWR", "standby: awake");
+    LOG_I("PWR", slept ? "standby: awake" : "standby: wake pending, skipped sleep");
 
     /* TIM3 stopped with the core, so now_ms did not advance while we slept;
      * re-base the idle timer or the next pass would sleep again immediately. */

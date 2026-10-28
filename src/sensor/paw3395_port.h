@@ -25,6 +25,7 @@ void paw3395_motion_stop(void);
  * with the flash still powered down, so it must not touch the SPI bus.
  * paw3395_motion_start() unparks and drains whatever the wake held back. */
 void paw3395_motion_park(void);
+bool paw3395_motion_wake_pending(void);
 
 /* Drain the accumulated raw delta since the last call, topping the DMA pipeline
  * up if the pin is still asserted. Safe to call every scan with no motion. */

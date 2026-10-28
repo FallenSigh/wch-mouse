@@ -1,6 +1,7 @@
 #ifndef __MOUSE_H__
 #define __MOUSE_H__
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define HID_BTN_LEFT  0x01
@@ -30,6 +31,7 @@ void mouse_set_cpi(uint16_t cpi);
  * a GPIOB interrupt, so the encoder's B phase (PB19) is not included. */
 void mouse_wake_arm(void);
 void mouse_wake_disarm(void);
+bool mouse_wake_pending(void);
 
 #ifdef __cplusplus
 }
